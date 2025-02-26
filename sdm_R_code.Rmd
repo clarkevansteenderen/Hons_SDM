@@ -1,0 +1,1827 @@
+---
+title: "SDMs: Honours Guide"
+author: "Clarke van Steenderen"
+date: "2025"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+---
+
+## First steps
+
+This introductory module to Species Distribution Modelling (SDM) will guide you through all the steps needed to create your first prediction models using the popular MaxEnt tool through R. We will use the Asian Citrus Psyllid (*Diaphorina citri*) as a case study, and generate a predictive MaxEnt model based on global climate variables. *Diaphorina citri* is a major citrus pest and has caused significant financial losses to citrus industries in many regions; in some cases it has threatened their existence. The psyllid is native to Asia, but has spread across the world. It has been recorded in Africa, but it has not dispersed as far south as South Africa yet.
+
+Let's create a model to predict which regions of South Africa might be the most climatically suitable for *D. citri*, and how it might enter the country through climatically-suitable routes.
+
+Create a new R project in a folder on your PC, and run the code below bit by bit. You can save this all in one big script, or you can create multiple R scripts for each part of the process. You can use the command ```source("script_name.R")``` to read in a particular script into your R environment.
+
+### Install/load the required R packages, and set the aesthetic theme for the plots
+
+These are the R libraries required to run the various functions we will need. If these are not installed, use ```install.packages("library_name")``` to save and access the library.
+
+```{r echo=TRUE, warning=FALSE, message=FALSE}
+
+# Install pacman if it's not already installed
+if (!require(pacman)) install.packages("pacman")
+
+# Use pacman to install/load the required libraries for the SDM scripts
+pacman::p_load(
+  NicheMapR, magrittr, dplyr, tidyr, janitor, raster, sp, ggplot2, rgbif, dismo,
+  ENMeval, sf, readr, terra, geodata, rnaturalearth, corrplot, gtools, igraph, usdm,
+  factoextra, gridExtra
+)
+
+# Change ggplot theme
+theme_set(
+  theme_classic() +
+    theme(
+      panel.border = element_rect(colour = "black", fill = NA),
+      axis.text = element_text(colour = "black"),
+      axis.title.x = element_text(margin = unit(c(2, 0, 0, 0), "mm")),
+      axis.title.y = element_text(margin = unit(c(0, 4, 0, 0), "mm")),
+      legend.position = "none"
+    )
+)
+
+# Set the theme for the maps
+theme_opts = list(
+  theme(
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.background = element_rect(fill = 'white', colour = NA),
+    plot.background = element_rect(),
+    axis.line = element_blank(),
+    axis.text.x = element_text(colour = "black"),
+    axis.text.y = element_text(colour = "black"),
+    axis.ticks = element_line(colour = "black"),
+    axis.title.x = element_text(colour = "black"),
+    axis.title.y = element_text(colour = "black"),
+    plot.title = element_text(colour = "black"),
+    panel.border = element_rect(fill = NA),
+    legend.key = element_blank()
+  )
+)
+```
+
+### Get global climate variables (19 in total) from the [WorldClim Bioclimatic Database](https://www.worldclim.org/data/bioclim.html)
+
+This downloads the 19 climatic variables available on the WorldClim database to your PC, and loads them into R as a SpatRaster object.
+
+```{r echo=TRUE}
+
+# create a data folder in your current working directory
+
+# dir.create("data/environmental_layers/current", recursive = TRUE, showWarnings = FALSE)
+
+# IF THIS IS THE FIRST TIME, DOWNLOAD THE DATA FROM GBIF:
+# wc_current <- geodata::worldclim_global(
+#     var = "bio",
+#     res = 2.5,      # Minute degree resolution of raster layers
+#     path = here::here("./data/environmental_layers/current/"),
+#     version = "2.1"
+# )
+
+# IF NOT THE FIRST TIME, load the WORLDCLIM rasters layers already downloaded 
+pred_clim <- terra::rast( list.files(
+  here::here("data/environmental_layers/current/wc2.1_2.5m/") ,
+  full.names = TRUE,
+  pattern = '.tif'
+))  
+
+pred_clim
+
+# set the CRS (coordinate reference system) projection for the current climate layers
+terra::crs(pred_clim) = "epsg:4326"
+terra::crs(pred_clim, describe = T)
+
+# plot the first variable, annual mean temperature:
+terra::plot(pred_clim$wc2.1_2.5m_bio_1)
+
+```
+
+Why do you think setting a consistent CRS projection is important?
+
+We now have all 19 climate variables stored as **pred_clim**. Perhaps we want an additional variable, like elevation. Let's add that to our climate variables as well.
+
+### Get elevation data
+
+```{r echo=TRUE}
+
+dir.create("data/environmental_layers/elevation/", recursive = TRUE, showWarnings = FALSE)
+
+# pred_altitude = geodata::elevation_global(res = 2.5, path = here::here("data/environmental_layers/elevation/"))
+
+# if already downloaded, read in
+pred_elevation = terra::rast(x = here::here(
+  "data/environmental_layers/elevation/wc2.1_2.5m/wc2.1_2.5m_elev.tif")
+)
+
+# Set the CRS
+terra::crs(pred_elevation) <- "epsg:4326"
+terra::crs(pred_elevation, describe = T)
+
+# plot
+terra::plot(pred_elevation)
+
+# check that the CRS for climate and elevation are the same
+terra::res(pred_clim)
+terra::res(pred_elevation)
+
+```
+
+### Combine climate and elevation data into one raster object
+
+```{r echo=TRUE}
+
+raster_list = list(pred_clim, pred_elevation)
+predictors = terra::rast(raster_list) 
+
+# Check the variable contains all 20 variables 
+terra::nlyr(predictors)
+
+predictors
+
+```
+
+### Download GPS records from GBIF
+
+```{r eval=FALSE}
+
+download all available Diaphorina citri records
+sp_gps_latest = geodata::sp_occurrence(
+  genus = "Diaphorina",
+  species = "citri",
+  download = TRUE,
+  geo = TRUE,
+  removeZeros = TRUE
+)
+
+# # keep just the columns with species name, latitude, and longitude
+sp_gps_latest = sp_gps_latest %>% 
+   dplyr::select(species, lat, lon)
+
+saveRDS(object = sp_gps_latest, file = "sp_gps_latest.rds")
+
+# this Excel file contains additional GPS records from the published literature and from field observations
+sp_gps = readr::read_csv("data/gps/Diaphorina_citri.csv") %>%
+  dplyr::select(species, lat = decimalLatitude, lon = decimalLongitude)
+
+# if already downloaded from GBIF, read in
+sp_gps_latest = readRDS("sp_gps_latest.rds")
+
+# combine everything
+sp_gps = rbind(sp_gps, sp_gps_latest)
+
+# Let's just keep the columns of data that we will use going forward 
+sp_data = sp_gps %>%
+  dplyr::select(species, lon, lat)
+
+# remove duplicate GPS records
+sp_data = sp_data %>%
+  dplyr::distinct(lon, lat, .keep_all= TRUE)
+
+# Now we need to filter the data further so that we keep only one GPS record per grid cell
+
+# Convert one of our environmental pred_clim into a raster layer 
+r = raster::raster(pred_clim[[1]])
+
+# Extract longitude and latitude into a dataframe
+xy = sp_data %>%
+  dplyr::select(lon, lat) %>%
+  as.data.frame(.)
+head(xy)
+
+# Retain only 1 GPS record per grid cell
+set.seed(2012)
+sp_data_thin = dismo::gridSample(
+  xy = xy,     # Data.frame containing lon/lat columns only 
+  r = r ,      # Environmental raster (must be a raster, not spatRast object)
+  n = 1        # Number of records to keep per cell
+)
+
+# let's see how many GPS points we have left in our thinned dataset
+nrow(sp_data)
+nrow(sp_data_thin)
+
+# Plot our points on a world map
+
+world_map <- rnaturalearth::ne_countries(
+  scale = "medium", 
+  returnclass = "sf"
+) 
+
+# Plot GPS points on world map to check our locality data is correct 
+global_distr = ggplot() +
+  # Add raster layer of world map 
+  geom_sf(data = world_map, alpha = 0.5) +
+  # Add GPS points 
+  geom_point(
+    data = sp_data_thin, 
+    size = 0.5,
+    aes(
+      x = lon, 
+      y = lat,
+      color = ifelse(lon > 60, "red", "black"),
+      shape = ifelse(lon > 60, "triangle", "circle")
+    )
+  )  +
+  scale_colour_manual(values = c("red", "black")) +
+  # Set world map CRS 
+  coord_sf(
+    crs = 4326,
+    ylim = c(-58, 90),  # Clip below -52 degrees latitude
+    expand = FALSE
+  ) + 
+  xlab("Longitude") + 
+  ylab("Latitude")
+
+global_distr
+
+# save the global map if desired
+dir.create("figures")
+ggsave("figures/global_distribution_map.png", global_distr, dpi = 550)
+
+# Let's save a separate dataframe for the GPS records from the native range only
+species_native <- sp_data_thin %>%
+  dplyr::filter(lon > 60)
+nrow(species_native)
+
+species_native_extent = sf::st_as_sf(species_native, coords = c("lon", "lat"), crs = 4326)
+species_native_extent = sf::st_bbox(species_native_extent)
+
+# crop the predictors
+pred_clim_native_range = raster::crop(predictors, species_native_extent)
+plot(pred_clim_native_range$wc2.1_2.5m_bio_1)
+
+# get just the invaded range (remove all native range GPS coordinates)
+species_invaded = sp_data_thin %>%
+  dplyr::filter(lon < 60)
+nrow(species_invaded)
+
+species_invaded_extent = sf::st_as_sf(species_invaded, coords = c("lon", "lat"), crs = 4326)
+species_invaded_extent = sf::st_bbox(species_invaded_extent)
+
+pred_clim_invaded_range = raster::crop(predictors, species_invaded_extent)
+plot(pred_clim_invaded_range$wc2.1_2.5m_bio_1)
+
+#################################
+# How many points in the USA?
+#################################
+
+species_usa <- sp_data_thin %>%
+  dplyr::filter(lon > -127, lon< -65, lat > -5, lat < 50)
+
+print(paste("There are", nrow(species_usa), "GPS points in the USA.") )
+
+#################################
+# How many points in Brazil?
+#################################
+
+species_braz <- sp_data_thin %>%
+  dplyr::filter(lon > -73.99, lon < -34.80, lat > -33.75, lat < 5.27)
+
+print(paste("There are", nrow(species_braz), "GPS points in Brazil.") )
+
+#################################
+# How many points in Africa?
+#################################
+
+species_afr <- sp_data_thin %>%
+  dplyr::filter(lon > -26, lon < 55, lat > -48, lat < 40)
+
+print(paste("There are", nrow(species_afr), "GPS points in Africa.") )
+
+```
+
+### Multicollinearity: which variables do we choose?
+
+We currently have 20 variables: 19 climate and 1 elevation. There will be some variables that are correlated with each other (e.g. low precipitation might be strongly correlated with high temperature). In these cases, including all correlated variables can be redundant, and it can become difficult to tease apart the more important ones that are actually affecting the model the most. Here, we run a correlation test, and select the variables we decide are the most important for this particular case.
+
+```{r eval=FALSE}
+
+# Extract the climate and elevation data at each presence GPS record for ACP
+clim_sp <- terra::extract(
+  x = predictors,  # SpatRast containing all 19 WORLDCLIM layers + elevation
+  y = sp_data_thin # data.frame containing GPS of study taxon (lon, lat)
+) %>%
+  dplyr::select(-ID) %>% # drop the ID column
+  na.omit() # remove any NA values
+
+# create a copy of clim_sp, so that we can run a correlation test on it without altering the original
+clim_sp_corr = clim_sp
+# change the variable names to a shorter simpler version
+new_colnames = gsub(".*_(\\d+)$", "\\1", names(clim_sp_corr))
+names(clim_sp_corr) = new_colnames
+# order the variables from 1 to 19, rather than 1, 10, 11, etc.
+clim_sp_corr = clim_sp_corr[, gtools::mixedsort(names(clim_sp_corr))]
+
+# change the name of the elevation column to make it simpler
+clim_sp_corr = clim_sp_corr %>% rename(elevation = wc2.1_2.5m_elev)
+
+# run a Spearman correlation test on the variables
+cor_mat = cor(clim_sp_corr, method = "spearman")
+
+# have a look at a correlation matrix plot
+cor_mat[cor_mat == 1 ] = 0
+corrplot::corrplot(cor_mat, type = "upper", order = "original",
+         tl.col = "black", tl.srt = 0)
+
+# identify strongly correlated variables
+# 0.7 is a standard threshold in the literature, but you can alter this value
+CORR.VAL = 0.7
+cor_mat[cor_mat < CORR.VAL & cor_mat > -CORR.VAL] = 0
+# create a correlation newtork
+network = igraph::graph_from_adjacency_matrix(cor_mat, weighted=T, mode="undirected", diag=F)
+plot(network, vertex.color = "lightgreen")
+
+```
+
+The connection lines in the network plot show the variables that are strongly correlated, and so we need to select the best ones to continue with. This can be subjective!
+
+Here, for example, bio 1 is correlated with bio 6, 8, and 11. If we choose bio 1, we shouldn't include these other three in our final list. Let's choose these:
+
+**bio 1, bio 2, bio 5, bio 7, bio 9, bio 12, bio 15, bio 19, and elevation.**
+
+As a reminder, these are the bio codes:
+
+**BIO1** = Annual Mean Temperature  
+**BIO2** = Mean Diurnal Range (Mean of monthly (max temp - min temp))  
+**BIO3** = Isothermality (BIO2/BIO7) (×100)  
+**BIO4** = Temperature Seasonality (standard deviation ×100)  
+**BIO5** = Max Temperature of Warmest Month  
+**BIO6** = Min Temperature of Coldest Month  
+**BIO7** = Temperature Annual Range (BIO5-BIO6)  
+**BIO8** = Mean Temperature of Wettest Quarter  
+**BIO9** = Mean Temperature of Driest Quarter  
+**BIO10** = Mean Temperature of Warmest Quarter  
+**BIO11** = Mean Temperature of Coldest Quarter  
+**BIO12** = Annual Precipitation  
+**BIO13** = Precipitation of Wettest Month  
+**BIO14** = Precipitation of Driest Month  
+**BIO15** = Precipitation Seasonality (Coefficient of Variation)  
+**BIO16** = Precipitation of Wettest Quarter  
+**BIO17** = Precipitation of Driest Quarter  
+**BIO18** = Precipitation of Warmest Quarter  
+**BIO19** = Precipitation of Coldest Quarter  
+
+
+```{r eval=FALSE}
+
+# specify the variables we want to keep
+vars_reduced_r2 = c(
+  "wc2.1_2.5m_bio_1",
+  "wc2.1_2.5m_bio_2",
+  "wc2.1_2.5m_bio_5",
+  "wc2.1_2.5m_bio_7",
+  "wc2.1_2.5m_bio_9",
+  "wc2.1_2.5m_bio_12",
+  "wc2.1_2.5m_bio_15",
+  "wc2.1_2.5m_bio_19",
+  "wc2.1_2.5m_elev"
+)
+
+# reduce our original full set of predictor variables to the ones specified above
+reduced_preds = terra::subset(x = predictors, subset = vars_reduced_r2)
+
+# extract the data for each GPS record
+clim_sp_reduced = terra::extract(
+  x = reduced_preds,         
+  y = sp_data_thin              
+) %>%
+  dplyr::select(-ID) %>% # drop the ID column
+  na.omit() # remove any NA values
+
+# a common approach is to run a follow-up test, using a Variance Inflation Factor method (VIF)
+# this is another method of assessing multicollinearity between variables, where a threshold value of 5
+# indicates moderate collinearity
+usdm::vifstep(clim_sp_reduced, th = 5)
+
+```
+
+The VIF test suggests that we remove bio 1 and bio 7. Since bio 1 is quite important, we'll just remove bio 7.
+
+```{r eval=FALSE}
+
+vars_reduced_r2_VIF = c(
+  "wc2.1_2.5m_bio_1",
+  "wc2.1_2.5m_bio_2",
+  "wc2.1_2.5m_bio_5",
+  "wc2.1_2.5m_bio_9",
+  "wc2.1_2.5m_bio_12",
+  "wc2.1_2.5m_bio_15",
+  "wc2.1_2.5m_bio_19",
+  "wc2.1_2.5m_elev"
+)
+
+# reduce our original full set of predictor variables to the ones specified above
+reduced_preds = terra::subset(x = predictors, subset = vars_reduced_r2_VIF)
+
+# write this raster as a tif file
+# terra::writeRaster(reduced_preds, "reduced_preds.tif")
+
+# let's also save our presence GPS records
+saveRDS(object = sp_data_thin, file = "sp_data_thin.rds")
+
+```
+
+### Presence Points
+
+Now that we have the predictor variables we want, we need to set up a data frame that contains the variable data at each recorded presence GPS point. 
+
+```{r eval=FALSE}
+
+# if not still in the R environment, read in our reduced predictor SpatRaster (tif file), and GPS presence points
+reduced_preds = terra::rast("reduced_preds.tif")
+sp_data_thin = readRDS("sp_data_thin.rds")
+
+# extract all the data at the GPS points for ACP
+speciesEnv = base::data.frame( raster::extract(reduced_preds, 
+                cbind(sp_data_thin$lon, sp_data_thin$lat)) )
+
+# add the lat and lon columns to the data
+speciesWd = cbind(sp_data_thin, speciesEnv)
+
+# clean the data frame, and add a column with the species name for ACP
+speciesWd = as.data.frame(speciesWd) %>%
+    dplyr::select(
+      decimalLatitude = lat,
+      decimalLongitude = lon,
+      dplyr::all_of(names(reduced_preds))
+    ) %>%
+    dplyr::mutate(species = "Diaphorina citri") %>%
+    dplyr::select(species, everything()
+    ) %>%
+  na.omit()
+
+# Reproject the CRS 
+coordinates(speciesWd) =  ~ decimalLongitude + decimalLatitude
+crs_wgs84 = CRS(SRS_string = "EPSG:4326")
+slot(speciesWd, "proj4string") = crs_wgs84
+
+speciesWd = as.data.frame(speciesWd)
+head(speciesWd)
+
+# Let's call this presPoints for clarity
+presPoints = speciesWd  
+
+# save to file
+saveRDS(object = presPoints, file = "presPoints.rds")
+
+```
+
+### Background Points (Pseudo-absences)
+
+We need to generate background GPS points where we are unlikely to record ACP. This is quite a debated topic in SDM work, as these pseudo-absence points are generated based on statistical approaches, rather than actual verified data. Nevertheless, a good approach is to select points from regions that are at least somewhat similar to presence areas in terms of climate type. Here, we'll use Koppen-Geiger climate data to select similar ecoregions to randomly sample points from.
+
+```{r eval=FALSE}
+
+kg_layer = sf::st_read("koppen_geiger")
+
+# Reproject KG layer
+geo_proj = "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
+kg_layer = sf::st_transform(kg_layer, geo_proj)
+
+# Coerce GPS records into SpatialPointsDataFrame
+records_spatial = sp::SpatialPointsDataFrame(
+  coords = cbind(sp_data_thin$lon, sp_data_thin$lat),
+  data = sp_data_thin,
+  proj4string = CRS('+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0')
+)
+
+# Select KG ecoregions in which there is at least one GPS record
+kg_sp = as(kg_layer, "Spatial")
+kg_contain = kg_sp[records_spatial, ]
+
+# Define background area by masking predictor layers to just the KG zones with at 
+# least 1 GPS record
+# Convert the KG zones containing GPS records back into an 'sf' object
+crs_wgs84 = CRS(SRS_string = "EPSG:4326")
+kg_contain = sf::st_as_sf(kg_contain)
+kg_contain = sf::st_set_crs(kg_contain, crs_wgs84)
+
+bg_area = terra::mask(reduced_preds, kg_contain)  
+
+terra::writeRaster(bg_area, "bg_area.tif")
+
+```
+
+```{r echo=TRUE}
+
+bg_area = terra::rast("bg_area.tif")
+
+# Plot to check the mask worked
+terra::plot(bg_area$wc2.1_2.5m_bio_1)
+
+```
+
+Now that we have an area from which to select background points, we can go ahead and randomly select 10,000 points (without replacement). Then, as before, we will extract our predictor variable data at those points and create a SpatRaster tif file.
+
+```{r eval=FALSE}
+
+# setting a seed makes this process repeatable, if you re-run this again
+set.seed(2023)
+  
+bg_points = terra::spatSample(
+    x = bg_area,        # Raster of background area to sample points from 
+    size = 10000,       # How many background points do we want?
+    method = "random",  # Random points
+    replace = FALSE,    # Sample without replacement
+    na.rm = TRUE,       # Remove background points that have NA climate data
+    as.df = TRUE,       # Return background points as data.frame object
+    xy = TRUE           # Return lat/lon values for each background point
+  ) %>%
+dplyr::rename(lon = x, lat = y)
+  
+head(bg_points)
+
+# clean the data frame, and add a column with the species name for ACP
+bg_pointsWd = as.data.frame(bg_points) %>%
+    dplyr::select(
+      decimalLatitude = lat,
+      decimalLongitude = lon,
+      dplyr::all_of(names(reduced_preds))
+    ) %>%
+    dplyr::mutate(species = "Diaphorina citri") %>%
+    dplyr::select(species, everything() ) 
+
+# Reproject CRS 
+coordinates(bg_pointsWd) =  ~ decimalLongitude + decimalLatitude
+crs_wgs84 = CRS(SRS_string = "EPSG:4326")
+slot(bg_pointsWd, "proj4string") = crs_wgs84
+
+bg_pointsWd = as.data.frame(bg_pointsWd)
+head(bg_pointsWd)  
+
+# Let's call this backPoints for clarity
+backPoints = bg_pointsWd 
+
+# save to file
+saveRDS(object = backPoints, file = "backPoints.rds")
+
+```
+
+```{r echo=TRUE}
+
+presPoints = readRDS("presPoints.rds")
+backPoints = readRDS("backPoints.rds")
+
+head(presPoints)
+head(backPoints)
+
+```
+
+### Model Tuning
+
+We have our presence and background GPS points for ACP, and now we need to find the best model parameters for running MaxEnt. This involves finding the optimal Feature Class (FC) and Regularisation Multiplier (RM) values, which will ensure that the predictions made are as accurate as they can be, given the input data.
+
+
+```{r eval=FALSE}
+
+# this bit of code creates folders in your working directory (WD), into which you can save output text files and figures
+# it won't overwrite a folder if it already exists
+
+if(!dir.exists("tuning")){
+  dir.create("tuning")
+}
+
+if(!dir.exists("figs")){
+  dir.create("figs")
+}
+
+# let's read in our presence and background points from our WD
+presPoints = readRDS("presPoints.rds")
+backPoints = readRDS("backPoints.rds")
+# and our predictors again
+reduced_preds = terra::rast("reduced_preds.tif")
+
+# we only need the lat and lon columns for the model tuning, so pull those out
+PRES.GPS = presPoints %>% dplyr::select(lon = decimalLongitude, lat = decimalLatitude)
+BACK.GPS = backPoints %>% dplyr::select(lon = decimalLongitude, lat = decimalLatitude)
+
+# combine the presence and background data so that you can get the extent of both
+PRES_and_BACK = rbind(PRES.GPS, BACK.GPS)
+
+PRES_and_BACK_extent = sf::st_as_sf(PRES_and_BACK, coords = c("lon", "lat"), crs = 4326)
+PRES_and_BACK_extent = sf::st_bbox(PRES_and_BACK_extent)
+
+# crop the predictor data so that it covers just the necessary extent 
+# of the occurrence + background data
+# this just makes the data a bit smaller and more manageable, as we don't need the full predictor extent
+predictor_data = raster::crop(reduced_preds, PRES_and_BACK_extent) %>%
+  raster::stack()
+
+terra::plot(predictor_data$wc2.1_2.5m_bio_1)
+
+```
+
+### Model Tuning
+
+Now we are ready to start the model tuning process. This can take minutes to hours, depending on the size of the data, and how many FC and RM values you want to test. Sometimes this can cause your R session to crash, if it is too memory intensive for your computer. Setting the java.parameters option could help, otherwise you may need to restart R.
+
+```{r eval=FALSE}
+
+# helps with memory allocation for Java
+options(java.parameters = "-Xmx16000m")
+
+list_settings = list(
+  fc = c("L","Q","H","LQH"), 
+  rm = c(1:4) # RM values from 1 to 4 should be sufficient
+)
+
+set.seed(2023)
+dismo::maxent()
+
+# Run the tuning analysis (ctrl + shift + c)
+
+tuning_results =
+  ENMeval::ENMevaluate(
+    occs = PRES.GPS,
+    envs = predictor_data,
+    bg = BACK.GPS,
+    tune.args = list_settings,
+    partitions = "block",
+    algorithm = "maxent.jar",
+    doClamp = FALSE
+  )
+
+res = ENMeval::eval.results(tuning_results)
+res = na.omit(res)
+
+# save to file
+write.csv(res, file = "tuning/model_tuning_enmeval_full.csv",
+          quote = FALSE, row.names = FALSE)
+
+# extract key metrics
+subset_res = res %>%
+  dplyr::select(rm, fc, auc.val.avg, auc.diff.avg, cbi.val.avg, or.10p.avg, AICc)
+
+# alter the format
+df_long = subset_res %>%
+  tidyr::gather(key = "variable", value = "value", -rm, -fc)
+df_long$rm = as.factor(df_long$rm)
+
+# save to file
+write.csv(df_long, file = "tuning/model_tuning_enmeval.csv",
+          quote = FALSE, row.names = FALSE)
+
+``` 
+
+```{r echo=TRUE}
+
+# I have already run this tuning analysis, and so we can read the results in to proceed
+
+df_long = read.csv("tuning/model_tuning_enmeval.csv")
+
+tuning_results_ggplot = ggplot(df_long, aes(x = rm, y = value, color = fc, group = fc)) +
+  geom_line() +
+  geom_point(aes(shape = fc)) +
+  scale_shape_manual(values = c(15, 16, 17, 5)) +
+  facet_wrap(~variable, scales = "free_y", nrow = 4) +
+  scale_colour_manual(values = c("black", "darkred", "royalblue", "forestgreen")) +
+  labs(x = "Regularisation multiplier", y = "Value") +
+  theme_classic() ;tuning_results_ggplot
+
+# ggsave("figs/tuning_results.png", tuning_results_ggplot, width = 9, height = 7)
+```
+
+Find the best models, optimising different metrics.
+
+```{r eval=FALSE}
+
+res = read.csv("tuning/model_tuning_enmeval_full.csv")
+
+# Select the model settings (RM and FC) that optimised AICc (delta AICc == 0)
+best_delta_aicc <- res %>% 
+  dplyr::filter(delta.AICc == 0) ;best_delta_aicc
+best_delta_aicc_output = best_delta_aicc %>% t(.)
+write.table(best_delta_aicc_output, "tuning/LQH1_model.txt", quote = FALSE)
+
+# select the model that optimised AUC (highest AUC value)
+best_auc <- res %>% 
+  dplyr::filter(auc.val.avg == max(auc.val.avg)) ;best_auc
+best_auc_test_output = best_auc %>% t(.)
+write.table(best_auc_test_output, "tuning/H3_model.txt", quote = FALSE)
+
+# select the model that optimised CBI (highest CBI value)
+best_cbi <- res %>% 
+  dplyr::filter(cbi.val.avg == max(cbi.val.avg)) ;best_cbi
+best_cbi_output = best_cbi %>% t(.)
+write.table(best_cbi_output, "tuning/H1_model.txt", quote = FALSE)
+
+# select the model that optimised the 10% omission rate (lowest or.10p value)
+best_or.10p.avg <- res %>% 
+  dplyr::filter(or.10p.avg == min(or.10p.avg)) ;best_or.10p.avg
+best_or.10p.avg_output = best_or.10p.avg %>% t(.)
+write.table(best_or.10p.avg_output, "tuning/H7_model.txt", quote = FALSE)
+
+# default model output
+default_mod_results <- res %>% 
+  dplyr::filter(tune.args == "fc.LQH_rm.1") 
+default_mod_results = default_mod_results %>% t(.)
+write.table(default_mod_results, "tuning/best_model_default.txt", quote = FALSE)
+
+```
+
+Area under the curve (AUC) values are commonly used to report model accuracy. Here are the AUC values for each of the outputs above, optimising for different metrics:
+
+| Metric  | Model | Value |
+|:-------:|:-----:|:-----:|
+| AICc    | LQH1  | 0.84  |
+| AUC     | H3    | 0.85  |
+| CBI     | H1    | 0.84  |
+| OR10    | H7    | 0.84  |
+| Default | LQH1  | 0.84  |
+
+The model optimising for AUC (FC = H, RM = 3) is the best, with an AUC value of 85% accuracy.
+
+### Principal Component Analysis - explore predictor variables
+
+Let's have a look at the contribution of each variable to the model.
+
+```{r echo=TRUE}
+
+presPoints = readRDS("presPoints.rds")
+climate.df = dplyr::select(presPoints, !c(species, decimalLatitude, decimalLongitude))
+head(climate.df)
+
+# Create new column names
+new_names = c(paste0("bio_", c("1", "2", "5", "9", "12", "15", "19")), "elev")
+
+# Set the new column names
+colnames(climate.df) = new_names
+head(climate.df)
+
+# create a PCA
+pca_res = prcomp(climate.df, scale. = TRUE)
+loadings = pca_res$rotation
+loadings
+
+PCA = factoextra::fviz_pca_var(pca_res,
+                                        col.var = "contrib", # Color by contributions to the PC
+                                        gradient.cols = c("blue", "gold", "red"),
+                                        repel = TRUE) + theme_classic(); PCA
+
+# Contributions of variables to PC1
+a = factoextra::fviz_contrib(pca_res, choice = "var", axes = 1)
+# Contributions of variables to PC2
+b = factoextra::fviz_contrib(pca_res, choice = "var", axes = 2)
+pca_contribs = gridExtra::grid.arrange(a, b, ncol=2, top='Contribution of the variables to the first two PCs')
+
+#ggsave(file = "figs/pca_contributions.png", pca_contribs, dpi = 350, height = 5, width = 10)
+#ggsave(file = "figs/pca.png", PCA, dpi = 350, height = 5, width = 6)
+
+```
+
+## Create the MaxEnt model
+
+We are finally ready to create a MaxEnt model, which we can project onto any geographic area we like.
+
+### Fit the MaxEnt model
+
+```{r echo=TRUE}
+
+presPoints = readRDS("presPoints.rds")
+backPoints = readRDS("backPoints.rds")
+reduced_preds = terra::rast("reduced_preds.tif")
+
+# bind the presence and absence data together into one data frame
+maxent_data = dplyr::bind_rows(presPoints, backPoints) %>% 
+  dplyr::select(-c(species, decimalLatitude, decimalLongitude)) 
+rownames(maxent_data) = NULL
+head(maxent_data)
+nrow(maxent_data)
+
+# Create a vector containing 0 (indicating background points) and 1 (indicating presence points)
+maxent_vector = c(
+  replicate(nrow(presPoints), "1"),
+  replicate(nrow(backPoints), "0")
+) 
+
+# FIT MAXENT MODEL
+maxentModel1 = dismo::maxent(
+  x = maxent_data,
+  p = maxent_vector,
+  path = here::here("models/maxent_H3/"),
+  replicates = 10,
+  args = c(
+    # Insert the optimal RM value here
+    'betamultiplier=3.0',
+    # Turn these on/off to change FC combinations 
+    # - To only use quadratic features, turn all to false except quadratic
+    'linear=false',
+    'quadratic=false',
+    'product=false',
+    'threshold=false',
+    'hinge=true',
+    # Don't change anything from here down 
+    'threads=2',
+    'doclamp=true',
+    'fadebyclamping=true',
+    'responsecurves=true',
+    'jackknife=true',
+    'askoverwrite=false',
+    'responsecurves=true',
+    'writemess=true',
+    'writeplotdata=true',
+    'writebackgroundpredictions=true'
+  )
+)
+
+response_data = dismo::response(maxentModel1, expand = TRUE)
+
+```
+
+Examine the model output files, particularly the response curves for each variable, and the importance of each variable to the model (contribution scores). Here, bio 1, 12, and 19 appear to have the greatest influence on the model. The average AUC test result is 0.83 (i.e. 83% accuracy).
+
+### Set up the prediction area
+
+Now that we have created our MaxEnt model, we need to decide where we want to project it, and then create raster layers for that area using our set of predictor variables.
+
+```{r eval = FALSE}
+
+if(!dir.exists("africa_env_layers")){
+  dir.create("africa_env_layers")
+}
+
+if(!dir.exists("africa_env_layers/current")){
+  dir.create("africa_env_layers/current")
+}
+
+# get the raster for Africa
+africa_ext = rnaturalearth::ne_countries(scale = "medium", returnclass = "sf") %>%
+  dplyr::filter(continent == "Africa")
+
+# read in our predictors again
+reduced_preds = terra::rast("reduced_preds.tif")
+
+# crop rasters
+africa_env_layers = raster::crop(reduced_preds, raster::extent(africa_ext))
+
+# set the CRS
+crs(africa_env_layers) = "EPSG:4326"
+
+terra::writeRaster(africa_env_layers, "africa_env_layers/africa_env_layers.tif", overwrite=TRUE)
+
+```
+
+```{r echo=TRUE}
+
+terra::rast("africa_env_layers/africa_env_layers.tif") %>% plot()
+
+```
+
+```{r eval = FALSE}
+
+directory.current = "africa_env_layers/current/"
+
+# Loop over each climate variable and save it with the correct name
+# write these rasters to file
+for (p in names(reduced_preds)){
+  raster::writeRaster(
+    africa_env_layers[[which(names(africa_env_layers) %in% p)]],
+    filename = paste0(directory.current, p, ".grd"),
+    bylayer = TRUE,
+    overwrite = TRUE,
+    format = "raster",
+    bandorder = 'BIL'
+  )
+}
+
+```
+
+## Project the MaxEnt model
+
+```{r echo=TRUE}
+
+if(!dir.exists("raster_projections")){
+  dir.create("raster_projections")
+}
+
+africa_env_layers = terra::rast("africa_env_layers/africa_env_layers.tif")
+
+# get the raster for Africa
+africa_ext = rnaturalearth::ne_countries(scale = "medium", returnclass = "sf") %>%
+  dplyr::filter(continent == "Africa")
+
+africa_ext = sf::st_set_crs(africa_ext, 4326)
+
+# use the model to predict climate suitability for Africa
+predict_maxent_africa = terra::predict(maxentModel1, africa_env_layers)
+predict_maxent_africa = terra::mask(predict_maxent_africa, africa_ext)
+
+terra::plot(predict_maxent_africa)
+
+terra::writeRaster(predict_maxent_africa, "raster_projections/maxent_projection_africa.tif",
+                   overwrite = TRUE)
+
+presPoints = readRDS("presPoints.rds")
+
+species_afr = presPoints %>%
+  dplyr::filter(decimalLongitude > -26, decimalLatitude < 55, decimalLatitude > -48, decimalLatitude < 40)
+
+africa = ggplot() +
+  # Plot MaxEnt prediction raster
+  tidyterra::geom_spatraster(
+    data = predict_maxent_africa,
+    maxcell = 5e+7         # maxcell = Inf
+  ) +
+  # Control raster colour and legend
+ tidyterra::scale_fill_whitebox_c(
+    palette = "muted",
+    breaks = seq(0, 1, 0.2),
+    limits = c(0, 1)
+  ) +
+  # Plot Africa boundary
+  geom_sf(data = africa_ext, fill = NA, color = "black", size = 0.1) +
+  # Control axis and legend labels 
+  labs(
+    x = "Longitude",
+    y = "Latitude",
+    fill = "P(suitability)"
+  ) +
+  geom_point(
+    data = species_afr,
+    size = 1,
+    aes(x = decimalLongitude, y = decimalLatitude)
+  )  +
+  # Crops map to just the geographic extent of Africa
+  coord_sf(
+    xlim = c(-25, 55),
+    ylim = c(-35, 38),
+    crs = 4326,
+    expand = FALSE
+  ) +
+  # Create title for the legend
+  theme(legend.position = "right") +
+  # Add scale bar to bottom-right of map
+ ggspatial::annotation_scale(
+    location = "bl",          # 'bl' = bottom left
+    style = "ticks",
+    width_hint = 0.2
+  ) +
+  # Add north arrow
+  ggspatial::annotation_north_arrow(
+    location = "bl",
+    which_north = "true",
+    pad_x = unit(0.175, "in"),
+    pad_y = unit(0.3, "in"),
+    style = ggspatial::north_arrow_fancy_orienteering
+  ) +
+  # Change appearance of the legend
+  guides(
+    fill = guide_colorbar(ticks = FALSE)
+  ) ;africa
+
+```
+
+```{r eval=FALSE}
+
+# save the figure
+ggsave("figs/africa_map.png", plot = africa, width = 6, height = 6, dpi = 350)
+
+# save in a format that can be opened in Google Earth as a KML layer
+africa_kml = terra::project(predict_maxent_africa, "EPSG:4326")
+africa_kml = raster::raster(africa_kml)
+raster::KML(africa_kml, "figs/africa", maxpixels=5000000, overwrite = TRUE)
+
+```
+
+### Some quick stats -> model performance
+
+```{r echo=TRUE}
+
+# convert presence and background points into vector objects
+prespoints.vect = terra::vect(
+  presPoints,
+  geom = c("decimalLongitude", "decimalLatitude"),
+  crs = "EPSG:4326"
+)
+
+backpoints.vect = terra::vect(
+  backPoints,
+  geom = c("decimalLongitude", "decimalLatitude"),
+  crs = "EPSG:4326"
+)
+  
+##############################################################
+# Extract MaxEnt suitability scores at each PRESENCE GPS point
+##############################################################
+  
+maxent_pres_scores = terra::extract(
+      x = predict_maxent_africa, # prediction raster of Africa
+      y = prespoints.vect,
+      xy = TRUE,
+      na.rm = TRUE
+    ) %>%
+    # Clean df
+    dplyr::select(
+      lat = y,
+      lon = x,
+      suit_score = 2 # assign the name of the second column ("median") to "suit_score"
+    ) %>%
+    tidyr::drop_na(suit_score) %>%
+    dplyr::mutate(pres = 1)
+  
+##############################################################
+# Extract MaxEnt suitability scores at each BACKGROUND GPS point
+##############################################################
+  
+maxent_background_scores = terra::extract(
+      x = predict_maxent_africa,
+      y = backpoints.vect,
+      xy = TRUE,
+      na.rm = TRUE
+    ) %>%
+    # Clean df
+    dplyr::select(
+      lat = y,
+      lon = x,
+      suit_score = 2
+    ) %>%
+    tidyr::drop_na(suit_score) %>%
+    dplyr::mutate(pres = 0)
+
+##############################################################
+# Combine dataframes 
+##############################################################
+
+clim_data.africa = dplyr::bind_rows(maxent_pres_scores, maxent_background_scores)
+
+mod.africa = glm(pres ~ suit_score, data = clim_data.africa, family = binomial(link = "logit"))
+  
+print(summary(mod.africa))
+
+# get the beta coefficient
+beta_original = coef(mod.africa)["suit_score"]
+beta_per_1percent = beta_original * 0.01
+odds_ratio_1percent = exp(beta_per_1percent)
+cat("Odds ratio for a 1% increase:", odds_ratio_1percent)
+
+# The value of 1.057333 means that the odds of recording the presence of ACP increases by a factor of 1.057333 with a 1% increase in MaxEnt suitability score.
+
+# check model fit
+DHARMa::simulateResiduals(fittedModel = mod.africa, plot = TRUE)
+
+car::Anova(mod.africa, test = "LR", type = "II")
+# the LR test shows a significant p-value
+  
+##############################################################
+# Plot statistical model  
+##############################################################
+  
+# Extract model predictions 
+preds.africa = ggeffects::ggpredict(mod.africa, terms = c("suit_score [0:1 by = 0.01]")) %>%
+    as.data.frame() %>%
+    dplyr::rename(suit_score = x)
+  
+clim_data_africa_presences = dplyr::filter(clim_data.africa, pres == 1)
+clim_data_africa_absences = dplyr::filter(clim_data.africa, pres == 0)
+  
+# Plot model predictions 
+prob_curve.africa = preds.africa %>%
+    ggplot2::ggplot(data = ., aes(x = suit_score, y = predicted)) +
+    geom_rug(data = clim_data_africa_presences, aes(x= suit_score, y = pres), sides = "t") + 
+    geom_rug(data = clim_data_africa_absences, aes(x= suit_score, y = pres), sides = "b") +
+    geom_line() +
+    geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.1, fill = "darkred") +
+    labs(
+      title = "Africa",
+      x = "MaxEnt suitability score",
+      y = "Probability of being recorded"
+    ); prob_curve.africa
+
+#################################
+# sensitivity
+#################################
+
+# find the optimal threshold, based on the model
+e.africa = evaluate(p = presPoints, a = backPoints, model = maxentModel1)
+
+# View various thresholds
+thresholds.africa = threshold(e.africa)
+print(thresholds.africa)
+
+# Define a threshold
+threshold.africa = 0.35
+predicted_presence.africa = ifelse(clim_data$suit_score >= threshold.africa, 1, 0)
+
+# Create confusion matrix
+conf_matrix.africa = table(Predicted = predicted_presence.africa, Observed = clim_data$pres)
+print(conf_matrix.africa)
+
+# Extract TP and FN
+TP.africa = conf_matrix.africa["1", "1"]
+FN.africa = conf_matrix.africa["0", "1"]
+
+# Calculate sensitivity
+sensitivity.africa = TP.africa / (TP.africa + FN.africa)
+cat("Sensitivity:", sensitivity.africa, "\n")
+
+```
+
+### Exploring other projection areas
+
+Let's plot prediction maps for Tanzania and South Africa specifically, as there are currently surveys being undertaken to survey and monitor ACP in these countries. These maps could help in targeting areas for field work, thereby saving time and effort.
+
+Tanzania:
+
+```{r echo=TRUE}
+
+# read in our predictors again
+reduced_preds = terra::rast("reduced_preds.tif")
+
+tanzania_ext = rnaturalearth::ne_countries(scale = "medium",
+                                           returnclass = "sf") %>%
+  dplyr::filter(name %in% c("Tanzania"))
+
+tanzania_ext = sf::st_set_crs(tanzania_ext, 4326)
+
+# Mask reduced set of WORLDCLIM layers to the extent of TZ
+tanz_map = raster::crop(reduced_preds, tanzania_ext)
+
+# Extract MaxEnt predictions for Tanzania
+predict_maxent_tanz = terra::predict(maxentModel1, tanz_map)
+terra::plot(predict_maxent_tanz)
+
+predict_maxent_tanz = terra::mask(predict_maxent_tanz, tanzania_ext)
+
+presPoints = readRDS("presPoints.rds")
+
+# Plot publication-quality figure   
+tanzania = ggplot() +
+  # Plot MaxEnt prediction raster
+  tidyterra::geom_spatraster(
+    data = predict_maxent_tanz,
+    maxcell = 5e+7  
+  ) +
+  # Plot Africa boundary
+  geom_sf(data = tanzania_ext, fill = NA, color = "black", size = 0.1) +
+  geom_point(
+    data = presPoints, 
+    size = 1.5,
+    aes(x = decimalLongitude, y = decimalLatitude)
+  )  +
+  # Control raster colour and legend
+ tidyterra::scale_fill_whitebox_c(
+    palette = "muted",
+    breaks = seq(0, 1, 0.2),
+    limits = c(0, 1)
+  ) +
+  # Control axis and legend labels 
+  labs(
+    x = "Longitude",
+    y = "Latitude",
+    fill = "P(suitability)"
+  ) +
+  # Crops map to just the geographic extent of TZ
+  coord_sf(
+    xlim = c(29.2, 40.4),
+    ylim = c(-11.8, -0.98),
+    crs = 4326,
+    expand = FALSE
+  ) +
+  # Create title for the legend
+  theme(legend.position = "right") +
+  # Add scale bar to bottom-right of map
+  ggspatial::annotation_scale(
+    location = "bl",          # 'bl' = bottom left
+    style = "ticks",
+    width_hint = 0.2
+  ) +
+  # Add north arrow
+  ggspatial::annotation_north_arrow(
+    location = "bl",
+    which_north = "true",
+    pad_x = unit(0.175, "in"),
+    pad_y = unit(0.3, "in"),
+    style = ggspatial::north_arrow_fancy_orienteering
+  ) +
+  # Change appearance of the legend
+  guides(
+    fill = guide_colorbar(ticks = FALSE)
+  ) ;tanzania
+
+```
+
+South Africa:
+
+```{r echo=TRUE}
+
+southafrica_ext = rnaturalearth::ne_countries(scale = "medium",
+                                           returnclass = "sf") %>%
+  dplyr::filter(name %in% c("South Africa"))
+
+southafrica_ext = sf::st_set_crs(southafrica_ext, 4326)
+
+# Mask reduced set of WORLDCLIM layers to the extent of South Africa
+sa_map = raster::crop(reduced_preds, southafrica_ext)
+
+# Extract MaxEnt predictions for Tanzania
+predict_maxent_sa = terra::predict(maxentModel1, sa_map)
+predict_maxent_sa = terra::mask(predict_maxent_sa, southafrica_ext)
+terra::plot(predict_maxent_sa)
+
+provincial_borders = ne_states(country = "South Africa", returnclass = "sf")
+
+# Plot publication-quality figure   
+southAfrica = ggplot() +
+  # Plot MaxEnt prediction raster
+  tidyterra::geom_spatraster(
+    data = predict_maxent_sa,
+    maxcell = 5e+7  
+  ) +
+  geom_sf(data = southafrica_ext, fill = NA, color = "black", size = 0.1) +
+  # Plot provincial borders
+  geom_sf(data = provincial_borders, fill = NA, color = "black") +
+  # Control raster colour and legend
+ tidyterra::scale_fill_whitebox_c(
+    palette = "muted",
+    breaks = seq(0, 1, 0.2),
+    limits = c(0, 1)
+  ) +
+  # Control axis and legend labels 
+  labs(
+    x = "Longitude",
+    y = "Latitude",
+    fill = "P(suitability)"
+  ) +
+  # Crops map to just the geographic extent of SA
+  coord_sf(
+  xlim = c(16, 33),      # Longitude range
+  ylim = c(-35, -22),    # Latitude range
+  crs = 4326,            # WGS84 coordinate reference system
+  expand = FALSE
+) +
+  # Create title for the legend
+  theme(legend.position = "right") +
+  # Add scale bar to bottom-right of map
+  ggspatial::annotation_scale(
+    location = "br",          # 'bl' = bottom left
+    style = "ticks",
+    width_hint = 0.2
+  ) +
+  # Add north arrow
+  ggspatial::annotation_north_arrow(
+    location = "br",
+    which_north = "true",
+    pad_x = unit(0.175, "in"),
+    pad_y = unit(0.3, "in"),
+    style = ggspatial::north_arrow_fancy_orienteering
+  ) +
+  # Change appearance of the legend
+  guides(
+    fill = guide_colorbar(ticks = FALSE)
+  ) ;southAfrica
+
+```
+
+We can even have a look at Reunion Island, where ACP has been reported recently.
+
+```{r echo=TRUE}
+# potentially run this if the function can't find Réunion because of the é
+# Sys.setlocale("LC_ALL", "en_US.UTF-8")
+
+reunion_ext <- rnaturalearth::ne_states(country = "France", returnclass = "sf") %>%
+  dplyr::filter(grepl("Réunion", name, ignore.case = TRUE))
+
+reunion_ext = sf::st_set_crs(reunion_ext, 4326)
+
+# Mask reduced set of WORLDCLIM layers to the extent of Reunion
+reunion_map = raster::crop(reduced_preds, reunion_ext)
+
+# Extract MaxEnt predictions for Reunion
+predict_maxent_reunion = terra::predict(maxentModel1, reunion_map)
+predict_maxent_reunion = terra::mask(predict_maxent_reunion, reunion_ext)
+terra::plot(predict_maxent_reunion)
+
+presPoints = readRDS("presPoints.rds")
+
+# Plot publication-quality figure   
+reunion = ggplot() +
+  # Plot MaxEnt prediction raster
+  tidyterra::geom_spatraster(
+    data = predict_maxent_reunion,
+    maxcell = 5e+7  
+  ) +
+  geom_sf(data = reunion_ext, fill = NA, color = "black", size = 0.1) +
+  # Control raster colour and legend
+ tidyterra::scale_fill_whitebox_c(
+    palette = "muted",
+    breaks = seq(0, 1, 0.2),
+    limits = c(0, 1)
+  ) +
+  geom_point(
+    data = presPoints, 
+    size = 1.5,
+    aes(x = decimalLongitude, y = decimalLatitude)
+  )  +
+  # Control axis and legend labels 
+  labs(
+    x = "Longitude",
+    y = "Latitude",
+    fill = "P(suitability)"
+  ) +
+  # Crops map to just the geographic extent of reunion
+  coord_sf(
+  xlim = c(55.1, 56),      # Longitude range for Réunion
+  ylim = c(-21.5, -20.8),# Latitude range for Réunion
+  crs = 4326,            # WGS84 coordinate reference system
+  expand = FALSE
+) +
+  # Create title for the legend
+  theme(legend.position = "right") +
+  # Add scale bar to bottom-right of map
+  ggspatial::annotation_scale(
+    location = "br",          # 'bl' = bottom left
+    style = "ticks",
+    width_hint = 0.2
+  ) +
+  # Add north arrow
+  ggspatial::annotation_north_arrow(
+    location = "br",
+    which_north = "true",
+    pad_x = unit(0.175, "in"),
+    pad_y = unit(0.3, "in"),
+    style = ggspatial::north_arrow_fancy_orienteering
+  ) +
+  # Change appearance of the legend
+  guides(
+    fill = guide_colorbar(ticks = FALSE)
+  ) ;reunion
+
+```
+
+## Model assessment
+
+Something interesting to explore is manually excluding occurrence points from a desired area, creating a MaxEnt model without them, and then having a look at how accurate the model is in predicting those areas as being suitable. This approach offers a form of independent validation, which one doesn't often see in the literature.
+
+As an exploratory exercise, let's exclude all the GPS points from South America, and re-run the model. We'll then validate the model using these independent points.
+
+```{r echo=TRUE}
+
+# these were our original presence and background points
+presPoints = readRDS("presPoints.rds")
+backPoints = readRDS("backPoints.rds")
+
+# read in our predictors again
+reduced_preds = terra::rast("reduced_preds.tif")
+
+# let's filter our presence and background points such that we remove all records from South America
+# woSA = without South America
+presPoints.woSA = presPoints %>%
+  dplyr::filter(!(decimalLatitude >= -56 & decimalLatitude <= 12 &
+           decimalLongitude >= -81 & decimalLongitude <= -34))
+
+backPoints.woSA = backPoints %>%
+  dplyr::filter(!(decimalLatitude >= -56 & decimalLatitude <= 12 &
+           decimalLongitude >= -81 & decimalLongitude <= -34))
+
+# compare the number of rows, and see that we have removed 143 presence points
+nrow(presPoints)
+nrow(presPoints.woSA)
+
+# here we've removed 1222 background points
+nrow(backPoints)
+nrow(backPoints.woSA)
+
+# plot on a world map to confirm
+world_map <- rnaturalearth::ne_countries(
+  scale = "medium", 
+  returnclass = "sf"
+) 
+
+# Plot GPS points on world map to check our locality data is correct 
+ggplot() +
+  # Add raster layer of world map 
+  geom_sf(data = world_map, alpha = 0.5) +
+  # Add GPS points 
+  geom_point(
+    data = backPoints.woSA, 
+    size = 0.2, colour = "darkred",
+    aes(x = decimalLongitude, y = decimalLatitude)
+  )  +
+  geom_point(
+    data = presPoints.woSA, 
+    size = 1, colour = "forestgreen",
+    aes(x = decimalLongitude, y = decimalLatitude)
+  )  +
+  # Set world map CRS 
+  coord_sf(
+    crs = 4326,
+    ylim = c(-58, 90),  # Clip below -52 degrees latitude
+    expand = FALSE
+  ) + 
+  xlab("Longitude") + 
+  ylab("Latitude")
+
+# bind the presence and absence data together into one data frame
+maxent_data.woSA = dplyr::bind_rows(presPoints.woSA, backPoints.woSA) %>% 
+  dplyr::select(-c(species, decimalLatitude, decimalLongitude)) 
+rownames(maxent_data.woSA) = NULL
+head(maxent_data.woSA)
+nrow(maxent_data.woSA)
+
+# Create a vector containing 0 (indicating background points) and 1 (indicating presence points)
+maxent_vector.woSA = c(
+  replicate(nrow(presPoints.woSA), "1"),
+  replicate(nrow(backPoints.woSA), "0")
+) 
+
+# FIT MAXENT MODEL
+maxentModel.woSA = dismo::maxent(
+  x = maxent_data.woSA,
+  p = maxent_vector.woSA,
+  path = here::here("models/maxent_H3.woSA/"),
+  replicates = 10,
+  args = c(
+    # Insert the optimal RM value here
+    'betamultiplier=3.0',
+    # Turn these on/off to change FC combinations 
+    # - To only use quadratic features, turn all to false except quadratic
+    'linear=false',
+    'quadratic=false',
+    'product=false',
+    'threshold=false',
+    'hinge=true',
+    # Don't change anything from here down 
+    'threads=2',
+    'doclamp=true',
+    'fadebyclamping=true',
+    'responsecurves=true',
+    'jackknife=true',
+    'askoverwrite=false',
+    'responsecurves=true',
+    'writemess=true',
+    'writeplotdata=true',
+    'writebackgroundpredictions=true'
+  )
+)
+
+# compare the response plots of the model with and without South American presence points
+dismo::response(maxentModel.woSA, expand = TRUE)
+dismo::response(maxentModel1, expand = TRUE)
+
+```
+
+
+Now let's project this new model onto Africa, and compare it to the model where we included South American points.
+
+
+```{r echo=TRUE}
+
+# use the model to predict climate suitability for Africa
+predict_maxent_africa.woSA = terra::predict(maxentModel.woSA, africa_env_layers)
+predict_maxent_africa.woSA = terra::mask(predict_maxent_africa.woSA, africa_ext)
+
+terra::plot(predict_maxent_africa.woSA)
+
+terra::writeRaster(predict_maxent_africa.woSA, "raster_projections/maxent_projection_africa.woSA.tif",
+                   overwrite = TRUE)
+
+africa.woSA = ggplot() +
+  # Plot MaxEnt prediction raster
+  tidyterra::geom_spatraster(
+    data = predict_maxent_africa.woSA,
+    maxcell = 5e+7         # maxcell = Inf
+  ) +
+  # Control raster colour and legend
+ tidyterra::scale_fill_whitebox_c(
+    palette = "muted",
+    breaks = seq(0, 1, 0.2),
+    limits = c(0, 1)
+  ) +
+  # Plot Africa boundary
+  geom_sf(data = africa_ext, fill = NA, color = "black", size = 0.1) +
+  # Control axis and legend labels 
+  labs(
+    x = "Longitude",
+    y = "Latitude",
+    fill = "P(suitability)"
+  ) +
+  geom_point(
+    data = species_afr,
+    size = 1,
+    aes(x = decimalLongitude, y = decimalLatitude)
+  )  +
+  # Crops map to just the geographic extent of Africa
+  coord_sf(
+    xlim = c(-25, 55),
+    ylim = c(-35, 38),
+    crs = 4326,
+    expand = FALSE
+  ) +
+  # Create title for the legend
+  theme(legend.position = "right") +
+  # Add scale bar to bottom-right of map
+ ggspatial::annotation_scale(
+    location = "bl",          # 'bl' = bottom left
+    style = "ticks",
+    width_hint = 0.2
+  ) +
+  # Add north arrow
+  ggspatial::annotation_north_arrow(
+    location = "bl",
+    which_north = "true",
+    pad_x = unit(0.175, "in"),
+    pad_y = unit(0.3, "in"),
+    style = ggspatial::north_arrow_fancy_orienteering
+  ) +
+  # Change appearance of the legend
+  guides(
+    fill = guide_colorbar(ticks = FALSE)
+  ) ;africa.woSA
+
+# save the figure
+# ggsave("figs/africa_map.woSA.png", plot = africa.woSA, width = 6, height = 6, dpi = 350)
+
+# save in a format that can be opened in Google Earth as a KML layer
+africa_kml.woSA = terra::project(predict_maxent_africa.woSA, "EPSG:4326")
+africa_kml.woSA = raster::raster(africa_kml.woSA)
+raster::KML(africa_kml.woSA, "figs/africa.woSA", maxpixels=5000000, overwrite = TRUE)
+
+# plot them alongside each other using the gridExtra package
+# africa_projections = gridExtra::grid.arrange(africa, africa.woSA, nrow = 1) %>%
+  # ggsave("figs/africa_maps.png", plot = ., width = 8, height = 8, dpi = 350)
+
+```
+
+Note the differences in suitable area prediction when the South American points were excluded from the model - particularly along the eastern coastline of South Africa.
+
+Let's restrict our Africa maps to show only the areas that have climatic suitability predictions of 0.75 and above, and calculate the difference in suitable area between the two. We will then validate the second MaxEnt model using the independent South American points.
+
+```{r echo=TRUE}
+
+predict_maxent_africa = terra::rast("raster_projections/maxent_projection_africa.tif")
+predict_maxent_africa.woSA = terra::rast("raster_projections/maxent_projection_africa.woSA.tif")
+
+predict_maxent_africa_thresh0.75 = predict_maxent_africa > 0.75
+terra::plot(predict_maxent_africa_thresh0.75)
+
+predict_maxent_africa.woSA_thresh0.75 = predict_maxent_africa.woSA > 0.75
+terra::plot(predict_maxent_africa.woSA_thresh0.75)
+
+# get the difference between the two rasters
+diff_raster = predict_maxent_africa_thresh0.75 - predict_maxent_africa.woSA_thresh0.75
+terra::plot(diff_raster, col = c("darkred", "grey85", "darkgreen"))
+
+# calculate km area difference
+area_raster = terra::cellSize(diff_raster, unit = "km")
+total_area_diff_km2 = terra::global(area_raster * (diff_raster != 0), sum, na.rm = TRUE)$sum
+total_area_diff_km2 
+
+# if you want to rather use ggplot, first convert the raster to a dataframe
+diff_df = as.data.frame(diff_raster, xy = TRUE, na.rm = TRUE)
+head(diff_df)
+
+diffafrica.map = ggplot(diff_df) +
+  geom_tile(aes(x = x, y = y, fill = factor(maxent))) + 
+  scale_fill_manual(
+    values = c("1" = "darkgreen", "0" = "grey95", "-1" = "darkred"),
+    name = "Difference",
+    labels = c("-1" = "Decrease", "0" = "No Change", "1" = "Increase")
+  ) +
+  coord_sf(expand = FALSE) +
+  labs(
+    title = "Difference in Suitability: Full model - model w/o S America",
+    x = "Longitude",
+    y = "Latitude"
+  ) +
+  # Crops map to just the geographic extent of Africa
+  coord_sf(
+    xlim = c(-25, 55),
+    ylim = c(-35, 38),
+    crs = 4326,
+    expand = FALSE
+  ) +
+  # Create title for the legend
+  theme(legend.position = "right") +
+  # Add scale bar to bottom-right of map
+ ggspatial::annotation_scale(
+    location = "bl",          # 'bl' = bottom left
+    style = "ticks",
+    width_hint = 0.2
+  ) +
+  # Add north arrow
+  ggspatial::annotation_north_arrow(
+    location = "bl",
+    which_north = "true",
+    pad_x = unit(0.175, "in"),
+    pad_y = unit(0.3, "in"),
+    style = ggspatial::north_arrow_fancy_orienteering
+  ) +
+  # Change appearance of the legend
+  guides(
+    fill = guide_colorbar(ticks = FALSE)
+  ) ;diffafrica.map
+
+# ggsave("figs/africa_diff.png", plot = diffafrica.map, width = 6, height = 6, dpi = 350)
+
+```
+
+In the above plot, the green areas show where the full model (including South American points) predicted suitable areas (> 0.75) that the model without those points did not, while the red areas show the converse. Grey areas denote no difference between the models.
+
+Let's use the South American points now to validate our latest MaxEnt model. First, we need to create objects that contain presence and background points for South America, and a raster layer with our predictor variables for the continent.
+
+```{r echo=TRUE}
+
+# Since we already had these presence and background points in our original datasets, let's create subsets that contain just those South American points
+
+presPoints.SAm = presPoints %>%
+  dplyr::filter(decimalLatitude >= -56 & decimalLatitude <= 12 &
+           decimalLongitude >= -81 & decimalLongitude <= -34)
+
+backPoints.SAm = backPoints %>%
+  dplyr::filter(decimalLatitude >= -56 & decimalLatitude <= 12 &
+           decimalLongitude >= -81 & decimalLongitude <= -34)
+
+# plot on a world map to confirm
+world_map <- rnaturalearth::ne_countries(
+  scale = "medium", 
+  returnclass = "sf"
+) 
+
+# Plot GPS points on world map to check our locality data is correct 
+ggplot() +
+  # Add raster layer of world map 
+  geom_sf(data = world_map, alpha = 0.5) +
+  # Add GPS points 
+  geom_point(
+    data = backPoints.SAm, 
+    size = 0.2, colour = "darkred",
+    aes(x = decimalLongitude, y = decimalLatitude)
+  )  +
+  geom_point(
+    data = presPoints.SAm, 
+    size = 1, colour = "forestgreen",
+    aes(x = decimalLongitude, y = decimalLatitude)
+  )  +
+  # Set world map CRS 
+  coord_sf(
+    crs = 4326,
+    ylim = c(-58, 90),  # Clip below -52 degrees latitude
+    expand = FALSE
+  ) + 
+  xlab("Longitude") + 
+  ylab("Latitude")
+
+# Now let's crop our predictor raster to South America
+
+# read in our predictors again
+reduced_preds = terra::rast("reduced_preds.tif")
+
+southAmerica_ext = rnaturalearth::ne_countries(scale = "medium",
+                                           returnclass = "sf") %>%
+  dplyr::filter(continent %in% c("South America"))
+
+southAmerica_ext = sf::st_set_crs(southAmerica_ext, 4326)
+
+# Mask reduced set of WORLDCLIM layers to the extent of South America
+southAmerica_map = raster::crop(reduced_preds, southAmerica_ext)
+
+# Get MaxEnt prediction for South America
+predict_maxent_SAm = terra::predict(maxentModel.woSA, southAmerica_map)
+predict_maxent_SAm = terra::mask(predict_maxent_SAm, southAmerica_ext)
+terra::plot(predict_maxent_SAm)
+
+```
+
+Now we need to extract the MaxEnt suitability score at each presence and background point in South America
+
+```{r echo=TRUE}
+
+prespoints.vect = terra::vect(
+  presPoints.SAm,
+  geom = c("decimalLongitude", "decimalLatitude"),
+  crs = "EPSG:4326"
+)
+
+backpoints.vect = terra::vect(
+  backPoints.SAm,
+  geom = c("decimalLongitude", "decimalLatitude"),
+  crs = "EPSG:4326"
+)
+  
+##############################################################
+# Extract MaxEnt suitability scores at each PRESENCE GPS point
+##############################################################
+  
+maxent_pres_scores = terra::extract(
+      x = predict_maxent_SAm, # prediction raster of South America
+      y = prespoints.vect,
+      xy = TRUE,
+      na.rm = TRUE
+    ) %>%
+    # Clean df
+    dplyr::select(
+      lat = y,
+      lon = x,
+      suit_score = 2 # assign the name of the second column ("median") to "suit_score"
+    ) %>%
+    tidyr::drop_na(suit_score) %>%
+    dplyr::mutate(pres = 1)
+  
+##############################################################
+# Extract MaxEnt suitability scores at each BACKGROUND GPS point
+##############################################################
+  
+maxent_background_scores = terra::extract(
+      x = predict_maxent_SAm,
+      y = backpoints.vect,
+      xy = TRUE,
+      na.rm = TRUE
+    ) %>%
+    # Clean df
+    dplyr::select(
+      lat = y,
+      lon = x,
+      suit_score = 2
+    ) %>%
+    tidyr::drop_na(suit_score) %>%
+    dplyr::mutate(pres = 0)
+  
+# Combine dataframes 
+clim_data.SAm = dplyr::bind_rows(maxent_pres_scores, maxent_background_scores)
+
+```
+
+Now that we have predicted MaxEnt scores for each presence and background point in South America, we can run a GLM to see whether the presence of ACP can be reliably predicted given a suitability score generated by the model we built (which excluded South American points). In other words, can the model we created distinguish between presence and background points for ACP?
+
+```{r echo=TRUE}
+
+#############################################################
+# Fit statistical model  
+##############################################################
+  
+mod.SAm = glm(pres ~ suit_score, data = clim_data.SAm, family = binomial(link = "logit"))
+  
+print(summary(mod.SAm))
+
+# get the beta coefficient
+beta_original = coef(mod.SAm)["suit_score"]
+beta_per_1percent = beta_original * 0.01
+odds_ratio_1percent = exp(beta_per_1percent)
+cat("Odds ratio for a 1% increase:", odds_ratio_1percent)
+
+# The value of 1.005653 means that the odds of recording the presence of ACP increases by a factor of 1.005653 with a 1% increase in MaxEnt suitability score.
+
+# check model fit
+DHARMa::simulateResiduals(fittedModel = mod.SAm, plot = TRUE)
+
+car::Anova(mod.SAm, test = "LR", type = "II")
+# the LR p-value here is not significant
+  
+##############################################################
+# Plot statistical model  
+##############################################################
+  
+# Extract model predictions 
+preds = ggeffects::ggpredict(mod.SAm, terms = c("suit_score [0:1 by = 0.01]")) %>%
+    as.data.frame() %>%
+    dplyr::rename(suit_score = x)
+  
+clim_data_presences = dplyr::filter(clim_data.SAm, pres == 1)
+clim_data_absences = dplyr::filter(clim_data.SAm, pres == 0)
+  
+# Plot model predictions 
+prob_curve_SAm = preds %>%
+    ggplot2::ggplot(data = ., aes(x = suit_score, y = predicted)) +
+    geom_rug(data = clim_data_presences, aes(x= suit_score, y = pres), sides = "t") + 
+    geom_rug(data = clim_data_absences, aes(x= suit_score, y = pres), sides = "b") +
+    geom_line() +
+    geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.1, fill = "steelblue") +
+    labs(
+      title = "South America",
+      x = "MaxEnt suitability score",
+      y = "Probability of being recorded"
+    ); prob_curve_SAm
+
+###############################
+# Sensitivity score
+###############################
+
+# find the optimal threshold, based on the model
+e.SAm = evaluate(p = presPoints.SAm, a = backPoints.SAm, model = maxentModel.woSA)
+
+# View various thresholds
+thresholds.SAm = threshold(e.SAm)
+print(thresholds.SAm)
+
+# Define a threshold
+threshold.SAm = 0.43
+predicted_presence.SAm = ifelse(clim_data.SAm$suit_score >= threshold.SAm, 1, 0)
+
+# Create confusion matrix
+conf_matrix.SAm = table(Predicted = predicted_presence.SAm, Observed = clim_data.SAm$pres)
+print(conf_matrix.SAm)
+
+# Extract TP and FN
+TP.SAm = conf_matrix.SAm["1", "1"]
+FN.SAm = conf_matrix.SAm["0", "1"]
+
+# Calculate sensitivity
+sensitivity.SAm = TP.SAm / (TP.SAm + FN.SAm)
+cat("Sensitivity:", sensitivity.SAm, "\n")
+
+```
