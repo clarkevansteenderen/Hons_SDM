@@ -7,3 +7,6 @@ This introductory module to Species Distribution Modelling (SDM) will guide you 
 Here, we will create MaxEnt models to predict which regions of South Africa might be the most climatically suitable for *D. citri*, and how it might enter the country through climatically-suitable routes. We'll go over all the major steps in an SDM analysis, and how to produce attractive maps.
 
 Download this repository by clicking **Code** ➡️ **Download ZIP"**
+
+<img src="africa_map.png" width="700" height="700"/>
+
