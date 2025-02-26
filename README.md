@@ -8,7 +8,7 @@ Here, we will create MaxEnt models to predict which regions of South Africa migh
 
 Download this repository by clicking **Code** ➡️ **Download ZIP"**
 
-The main coding file is **sdm_R_code.html** or **sdm_R_code.rmd**
+The main coding file is ``sdm_R_code.html`` or ``sdm_R_code.rmd``
 
 <img src="africa_map.png" width="800" height="600"/>
 
