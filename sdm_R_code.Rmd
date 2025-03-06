@@ -988,7 +988,88 @@ raster::KML(africa_kml, "figs/africa", maxpixels=5000000, overwrite = TRUE)
 
 ```
 
+Let's write a quick function to plot maps. This saves us the trouble of re-using the same ggplot code over and over again; making the coding process more efficient. Every time we want to plot a raster prediction layer, we can just call this function. Let's call it **plot.predmap**.
+
+```{r, echo=TRUE}
+
+plot.predmap = function(raster, EXT, title = "", arrow.pos = "bl", scale.pos = "bl"){
+  
+ MAP = ggplot() +
+  # Plot MaxEnt prediction raster
+  tidyterra::geom_spatraster(
+    data = raster,
+    maxcell = 5e+7         # maxcell = Inf
+  ) +
+  # Control raster colour and legend
+ tidyterra::scale_fill_whitebox_c(
+    palette = "muted",
+    breaks = seq(0, 1, 0.2),
+    limits = c(0, 1)
+  ) +
+  # Plot boundary
+  geom_sf(data = EXT, fill = NA, color = "black", size = 0.1) +
+  # Control axis and legend labels 
+  labs(
+    title = title,
+    x = "Longitude",
+    y = "Latitude",
+    fill = "P(suitability)"
+  ) +
+  # Crops map to just the geographic extent of Africa
+  coord_sf(
+    xlim = c(raster::extent(EXT)[1],raster::extent(EXT)[2]),
+    ylim = c(raster::extent(EXT)[3],raster::extent(EXT)[4]),
+    crs = 4326,
+    expand = FALSE
+  ) +
+  # Create title for the legend
+  theme(legend.position = "right") +
+  # Add scale bar to bottom-right of map
+ ggspatial::annotation_scale(
+    location = scale.pos,          # 'bl' = bottom left
+    style = "ticks",
+    width_hint = 0.2
+  ) +
+  # Add north arrow
+  ggspatial::annotation_north_arrow(
+    location = arrow.pos,
+    which_north = "true",
+    pad_x = unit(0.175, "in"),
+    pad_y = unit(0.3, "in"),
+    style = ggspatial::north_arrow_fancy_orienteering
+  ) +
+  # Change appearance of the legend
+  guides(
+    fill = guide_colorbar(ticks = FALSE)
+  )
+  
+  return(MAP)
+}
+
+```
+
+A quick example of how one would use the function to plot the prediction for Africa:
+
+``` {r, echo=TRUE}
+
+africa = plot.predmap(raster = predict_maxent_africa, EXT = africa_ext, title = "Africa")
+
+# if we want to crop it just a bit more, so that we don't have a large space at the bottom (because Marion island is included in South Africa), we can add a further ylim change:
+
+africa = africa +
+  coord_sf(
+    ylim = c(-35,38),
+    crs = 4326,
+    expand = FALSE
+  ) 
+
+africa
+
+```
+
 ### Some quick stats -> model performance
+
+## How well did the model perform for the African continent?
 
 ```{r echo=TRUE}
 
@@ -1078,19 +1159,7 @@ preds.africa = ggeffects::ggpredict(mod.africa, terms = c("suit_score [0:1 by = 
   
 clim_data_africa_presences = dplyr::filter(clim_data.africa, pres == 1)
 clim_data_africa_absences = dplyr::filter(clim_data.africa, pres == 0)
-  
-# Plot model predictions 
-prob_curve.africa = preds.africa %>%
-    ggplot2::ggplot(data = ., aes(x = suit_score, y = predicted)) +
-    geom_rug(data = clim_data_africa_presences, aes(x= suit_score, y = pres), sides = "t") + 
-    geom_rug(data = clim_data_africa_absences, aes(x= suit_score, y = pres), sides = "b") +
-    geom_line() +
-    geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.1, fill = "darkred") +
-    labs(
-      title = "Africa",
-      x = "MaxEnt suitability score",
-      y = "Probability of being recorded"
-    ); prob_curve.africa
+
 
 #################################
 # sensitivity
@@ -1105,10 +1174,10 @@ print(thresholds.africa)
 
 # Define a threshold
 threshold.africa = 0.35
-predicted_presence.africa = ifelse(clim_data$suit_score >= threshold.africa, 1, 0)
+predicted_presence.africa = ifelse(clim_data.africa$suit_score >= threshold.africa, 1, 0)
 
 # Create confusion matrix
-conf_matrix.africa = table(Predicted = predicted_presence.africa, Observed = clim_data$pres)
+conf_matrix.africa = table(Predicted = predicted_presence.africa, Observed = clim_data.africa$pres)
 print(conf_matrix.africa)
 
 # Extract TP and FN
@@ -1119,9 +1188,186 @@ FN.africa = conf_matrix.africa["0", "1"]
 sensitivity.africa = TP.africa / (TP.africa + FN.africa)
 cat("Sensitivity:", sensitivity.africa, "\n")
 
+# Plot model predictions 
+prob_curve.africa = preds.africa %>%
+    ggplot2::ggplot(data = ., aes(x = suit_score, y = predicted)) +
+    geom_rug(data = clim_data_africa_presences, aes(x= suit_score, y = pres), sides = "t") + 
+    geom_rug(data = clim_data_africa_absences, aes(x= suit_score, y = pres), sides = "b") +
+    geom_line() +
+    geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.1, fill = "darkred") +
+    labs(
+      title = "Africa",
+      subtitle = paste0("Sensitivity = ", round(sensitivity.africa, 2)),
+      x = "MaxEnt suitability score",
+      y = "Probability of being recorded"
+    ); prob_curve.africa
+
 ```
 
-### Exploring other projection areas
+### How well did the model perform in the native range?
+
+```{r echo=TRUE}
+
+reduced_preds = terra::rast("reduced_preds.tif")
+presPoints = readRDS("presPoints.rds")
+backPoints = readRDS("backPoints.rds")
+
+presPoints.native = presPoints %>%
+  dplyr::filter(decimalLongitude > 60)
+nrow(presPoints.native )
+
+backPoints.native = backPoints %>%
+  dplyr::filter(decimalLongitude > 60)
+nrow(backPoints.native )
+
+all.native = rbind(presPoints.native, backPoints.native) %>%
+  dplyr::rename(lon = decimalLongitude, lat = decimalLatitude)
+
+NR_extent = sf::st_as_sf(all.native, coords = c("lon", "lat"), crs = 4326)
+NR_extent = sf::st_bbox(species_native_extent)
+
+native_range_layers = raster::crop(reduced_preds, species_native_extent)
+#plot(native_range_layers$wc2.1_2.5m_bio_1)
+
+# use the model to predict climate suitability for the native range
+predict_maxent_NR = terra::predict(maxentModel1, native_range_layers)
+
+terra::plot(predict_maxent_NR)
+
+terra::writeRaster(predict_maxent_NR, "raster_projections/maxent_projection_native_range.tif",
+                   overwrite = TRUE)
+
+##############################################################
+# Extract MaxEnt suitability scores at each PRESENCE GPS point
+##############################################################
+  
+# convert presence and background points into vector objects
+prespoints.native.vect = terra::vect(
+  presPoints.native,
+  geom = c("decimalLongitude", "decimalLatitude"),
+  crs = "EPSG:4326"
+)
+
+backpoints.native.vect = terra::vect(
+  backPoints.native,
+  geom = c("decimalLongitude", "decimalLatitude"),
+  crs = "EPSG:4326"
+)
+
+maxent_pres_scores.NR = terra::extract(
+      x = predict_maxent_NR, # prediction raster of the native range
+      y = prespoints.vect,
+      xy = TRUE,
+      na.rm = TRUE
+    ) %>%
+    # Clean df
+    dplyr::select(
+      lat = y,
+      lon = x,
+      suit_score = 2 # assign the name of the second column ("median") to "suit_score"
+    ) %>%
+    tidyr::drop_na(suit_score) %>%
+    dplyr::mutate(pres = 1)
+  
+##############################################################
+# Extract MaxEnt suitability scores at each BACKGROUND GPS point
+##############################################################
+  
+maxent_background_scores.NR = terra::extract(
+      x = predict_maxent_NR,
+      y = backpoints.native.vect,
+      xy = TRUE,
+      na.rm = TRUE
+    ) %>%
+    # Clean df
+    dplyr::select(
+      lat = y,
+      lon = x,
+      suit_score = 2
+    ) %>%
+    tidyr::drop_na(suit_score) %>%
+    dplyr::mutate(pres = 0)
+
+##############################################################
+# Combine dataframes 
+##############################################################
+
+clim_data.NR = dplyr::bind_rows(maxent_pres_scores.NR, maxent_background_scores.NR)
+
+mod.NR = glm(pres ~ suit_score, data = clim_data.NR, family = binomial(link = "logit"))
+  
+print(summary(mod.NR))
+
+# get the beta coefficient
+beta_original = coef(mod.NR)["suit_score"]
+beta_per_1percent = beta_original * 0.01
+odds_ratio_1percent = exp(beta_per_1percent)
+cat("Odds ratio for a 1% increase:", odds_ratio_1percent)
+
+# The value of 1.049937 means that the odds of recording the presence of ACP increases by a factor of 1.049937 with a 1% increase in MaxEnt suitability score.
+
+# check model fit
+DHARMa::simulateResiduals(fittedModel = mod.NR, plot = TRUE)
+
+car::Anova(mod.NR, test = "LR", type = "II")
+# the LR test shows a significant p-value
+  
+##############################################################
+# Plot statistical model  
+##############################################################
+  
+# Extract model predictions 
+preds.NR = ggeffects::ggpredict(mod.NR, terms = c("suit_score [0:1 by = 0.01]")) %>%
+    as.data.frame() %>%
+    dplyr::rename(suit_score = x)
+  
+clim_data_NR_presences = dplyr::filter(clim_data.NR, pres == 1)
+clim_data_NR_absences = dplyr::filter(clim_data.NR, pres == 0)
+  
+#################################
+# sensitivity
+#################################
+
+# find the optimal threshold, based on the model
+e.NR = evaluate(p = presPoints.native, a = backPoints.native, model = maxentModel1)
+
+# View various thresholds
+thresholds.NR = threshold(e.NR)
+print(thresholds.NR)
+
+# Define a threshold
+threshold.NR = 0.29
+predicted_presence.NR = ifelse(clim_data.NR$suit_score >= threshold.NR, 1, 0)
+
+# Create confusion matrix
+conf_matrix.NR = table(Predicted = predicted_presence.NR, Observed = clim_data.NR$pres)
+print(conf_matrix.NR)
+
+# Extract TP and FN
+TP.NR = conf_matrix.NR["1", "1"]
+FN.NR = conf_matrix.NR["0", "1"]
+
+# Calculate sensitivity
+sensitivity.NR = TP.NR / (TP.NR + FN.NR)
+cat("Sensitivity:", sensitivity.NR, "\n")
+
+# Plot model predictions 
+prob_curve.NR = preds.NR %>%
+    ggplot2::ggplot(data = ., aes(x = suit_score, y = predicted)) +
+    geom_rug(data = clim_data_NR_presences, aes(x= suit_score, y = pres), sides = "t") + 
+    geom_rug(data = clim_data_NR_absences, aes(x= suit_score, y = pres), sides = "b") +
+    geom_line() +
+    geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.1, fill = "forestgreen") +
+    labs(
+      title = "Native Range",
+      subtitle = paste0("Sensitivity = ", round(sensitivity.NR, 2)),
+      x = "MaxEnt suitability score",
+      y = "Probability of being recorded"
+    ); prob_curve.NR
+
+```
+
+## Exploring other projection areas
 
 Let's plot prediction maps for Tanzania and South Africa specifically, as there are currently surveys being undertaken to survey and monitor ACP in these countries. These maps could help in targeting areas for field work, thereby saving time and effort.
 
@@ -1149,59 +1395,9 @@ predict_maxent_tanz = terra::mask(predict_maxent_tanz, tanzania_ext)
 
 presPoints = readRDS("presPoints.rds")
 
-# Plot publication-quality figure   
-tanzania = ggplot() +
-  # Plot MaxEnt prediction raster
-  tidyterra::geom_spatraster(
-    data = predict_maxent_tanz,
-    maxcell = 5e+7  
-  ) +
-  # Plot Africa boundary
-  geom_sf(data = tanzania_ext, fill = NA, color = "black", size = 0.1) +
-  geom_point(
-    data = presPoints, 
-    size = 1.5,
-    aes(x = decimalLongitude, y = decimalLatitude)
-  )  +
-  # Control raster colour and legend
- tidyterra::scale_fill_whitebox_c(
-    palette = "muted",
-    breaks = seq(0, 1, 0.2),
-    limits = c(0, 1)
-  ) +
-  # Control axis and legend labels 
-  labs(
-    x = "Longitude",
-    y = "Latitude",
-    fill = "P(suitability)"
-  ) +
-  # Crops map to just the geographic extent of TZ
-  coord_sf(
-    xlim = c(29.2, 40.4),
-    ylim = c(-11.8, -0.98),
-    crs = 4326,
-    expand = FALSE
-  ) +
-  # Create title for the legend
-  theme(legend.position = "right") +
-  # Add scale bar to bottom-right of map
-  ggspatial::annotation_scale(
-    location = "bl",          # 'bl' = bottom left
-    style = "ticks",
-    width_hint = 0.2
-  ) +
-  # Add north arrow
-  ggspatial::annotation_north_arrow(
-    location = "bl",
-    which_north = "true",
-    pad_x = unit(0.175, "in"),
-    pad_y = unit(0.3, "in"),
-    style = ggspatial::north_arrow_fancy_orienteering
-  ) +
-  # Change appearance of the legend
-  guides(
-    fill = guide_colorbar(ticks = FALSE)
-  ) ;tanzania
+# Plot publication-quality figure  
+
+tanzania = plot.predmap(raster = predict_maxent_tanz, EXT = tanzania_ext, title = "Tanzania")
 
 ```
 
@@ -1225,55 +1421,23 @@ terra::plot(predict_maxent_sa)
 
 provincial_borders = ne_states(country = "South Africa", returnclass = "sf")
 
-# Plot publication-quality figure   
-southAfrica = ggplot() +
-  # Plot MaxEnt prediction raster
-  tidyterra::geom_spatraster(
-    data = predict_maxent_sa,
-    maxcell = 5e+7  
-  ) +
-  geom_sf(data = southafrica_ext, fill = NA, color = "black", size = 0.1) +
-  # Plot provincial borders
+# Plot publication-quality figure  
+
+southAfrica = plot.predmap(raster = predict_maxent_sa, EXT = southafrica_ext, 
+                           title = "South Africa", arrow.pos = "br", scale.pos = "br") 
+
+southAfrica = southAfrica + 
+  # add provincial borders
   geom_sf(data = provincial_borders, fill = NA, color = "black") +
-  # Control raster colour and legend
- tidyterra::scale_fill_whitebox_c(
-    palette = "muted",
-    breaks = seq(0, 1, 0.2),
-    limits = c(0, 1)
-  ) +
-  # Control axis and legend labels 
-  labs(
-    x = "Longitude",
-    y = "Latitude",
-    fill = "P(suitability)"
-  ) +
-  # Crops map to just the geographic extent of SA
+  # modify the lat lon display
   coord_sf(
-  xlim = c(16, 33),      # Longitude range
-  ylim = c(-35, -22),    # Latitude range
-  crs = 4326,            # WGS84 coordinate reference system
+  xlim = c(16, 33),      
+  ylim = c(-35, -22),    
+  crs = 4326,           
   expand = FALSE
-) +
-  # Create title for the legend
-  theme(legend.position = "right") +
-  # Add scale bar to bottom-right of map
-  ggspatial::annotation_scale(
-    location = "br",          # 'bl' = bottom left
-    style = "ticks",
-    width_hint = 0.2
-  ) +
-  # Add north arrow
-  ggspatial::annotation_north_arrow(
-    location = "br",
-    which_north = "true",
-    pad_x = unit(0.175, "in"),
-    pad_y = unit(0.3, "in"),
-    style = ggspatial::north_arrow_fancy_orienteering
-  ) +
-  # Change appearance of the legend
-  guides(
-    fill = guide_colorbar(ticks = FALSE)
-  ) ;southAfrica
+) 
+
+southAfrica 
 
 ```
 
@@ -1299,57 +1463,9 @@ terra::plot(predict_maxent_reunion)
 presPoints = readRDS("presPoints.rds")
 
 # Plot publication-quality figure   
-reunion = ggplot() +
-  # Plot MaxEnt prediction raster
-  tidyterra::geom_spatraster(
-    data = predict_maxent_reunion,
-    maxcell = 5e+7  
-  ) +
-  geom_sf(data = reunion_ext, fill = NA, color = "black", size = 0.1) +
-  # Control raster colour and legend
- tidyterra::scale_fill_whitebox_c(
-    palette = "muted",
-    breaks = seq(0, 1, 0.2),
-    limits = c(0, 1)
-  ) +
-  geom_point(
-    data = presPoints, 
-    size = 1.5,
-    aes(x = decimalLongitude, y = decimalLatitude)
-  )  +
-  # Control axis and legend labels 
-  labs(
-    x = "Longitude",
-    y = "Latitude",
-    fill = "P(suitability)"
-  ) +
-  # Crops map to just the geographic extent of reunion
-  coord_sf(
-  xlim = c(55.1, 56),      # Longitude range for Réunion
-  ylim = c(-21.5, -20.8),# Latitude range for Réunion
-  crs = 4326,            # WGS84 coordinate reference system
-  expand = FALSE
-) +
-  # Create title for the legend
-  theme(legend.position = "right") +
-  # Add scale bar to bottom-right of map
-  ggspatial::annotation_scale(
-    location = "br",          # 'bl' = bottom left
-    style = "ticks",
-    width_hint = 0.2
-  ) +
-  # Add north arrow
-  ggspatial::annotation_north_arrow(
-    location = "br",
-    which_north = "true",
-    pad_x = unit(0.175, "in"),
-    pad_y = unit(0.3, "in"),
-    style = ggspatial::north_arrow_fancy_orienteering
-  ) +
-  # Change appearance of the legend
-  guides(
-    fill = guide_colorbar(ticks = FALSE)
-  ) ;reunion
+
+reunion = plot.predmap(raster = predict_maxent_reunion, EXT =  reunion_ext, title = "Reunion")
+reunion
 
 ```
 
@@ -1784,19 +1900,6 @@ preds = ggeffects::ggpredict(mod.SAm, terms = c("suit_score [0:1 by = 0.01]")) %
 clim_data_presences = dplyr::filter(clim_data.SAm, pres == 1)
 clim_data_absences = dplyr::filter(clim_data.SAm, pres == 0)
   
-# Plot model predictions 
-prob_curve_SAm = preds %>%
-    ggplot2::ggplot(data = ., aes(x = suit_score, y = predicted)) +
-    geom_rug(data = clim_data_presences, aes(x= suit_score, y = pres), sides = "t") + 
-    geom_rug(data = clim_data_absences, aes(x= suit_score, y = pres), sides = "b") +
-    geom_line() +
-    geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.1, fill = "steelblue") +
-    labs(
-      title = "South America",
-      x = "MaxEnt suitability score",
-      y = "Probability of being recorded"
-    ); prob_curve_SAm
-
 ###############################
 # Sensitivity score
 ###############################
@@ -1823,5 +1926,25 @@ FN.SAm = conf_matrix.SAm["0", "1"]
 # Calculate sensitivity
 sensitivity.SAm = TP.SAm / (TP.SAm + FN.SAm)
 cat("Sensitivity:", sensitivity.SAm, "\n")
+
+# Plot model predictions 
+prob_curve_SAm = preds %>%
+    ggplot2::ggplot(data = ., aes(x = suit_score, y = predicted)) +
+    geom_rug(data = clim_data_presences, aes(x= suit_score, y = pres), sides = "t") + 
+    geom_rug(data = clim_data_absences, aes(x= suit_score, y = pres), sides = "b") +
+    geom_line() +
+    geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.1, fill = "steelblue") +
+    labs(
+      title = "South America",
+      subtitle = paste0("Sensitivity = ", round(sensitivity.SAm, 2)),
+      x = "MaxEnt suitability score",
+      y = "Probability of being recorded"
+    ); prob_curve_SAm
+
+```
+
+```{r, echo=TRUE}
+
+gridExtra::grid.arrange(prob_curve.africa, prob_curve_SAm, prob_curve.NR, nrow = 1)
 
 ```
