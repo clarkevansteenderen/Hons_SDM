@@ -4,18 +4,19 @@
 
 This introductory module to Species Distribution Modelling (SDM) will guide you through all the steps needed to create your first prediction models using the popular MaxEnt tool through R. We will use the Asian Citrus Psyllid (*Diaphorina citri*) as a case study, and generate a predictive MaxEnt model based on global climate variables and elevation data. *Diaphorina citri* is a major citrus pest and has caused significant financial losses to citrus industries in many regions; in some cases it has threatened their existence. The psyllid is native to Asia, but has spread across the world. It has been recorded in Africa, but it has not dispersed as far south as South Africa yet.
 
-🟣 The course handout is [here](https://github.com/clarkevansteenderen/Hons_SDM/blob/main/SDM_course_handout.pdf )
+### 🟣 The course handout is [here](https://github.com/clarkevansteenderen/Hons_SDM/blob/main/SDM_course_handout.pdf )
 
 We will create MaxEnt models to predict which regions of South Africa might be the most climatically suitable for *D. citri*, and how it might enter the country through climatically-suitable routes. We'll go over all the major steps in an SDM analysis, and how to produce attractive maps.
 
-🟣 Download this repository by clicking **Code** ➡️ **Download ZIP"**
+### 🟣 Download this repository by clicking **Code** ➡️ **Download ZIP"**
 
 The main coding file is ``sdm_R_code.html`` or ``sdm_R_code.rmd``
 
-🟣 **Download all the required data folders in this [shared Google Drive folder](https://drive.google.com/drive/folders/1qe3cojnh71l2tmwR4WsdlGPr4fR7CHf0?usp=drive_link)**    
+### 🟣 **Download all the required data folders in this [shared Google Drive folder](https://drive.google.com/drive/folders/1qe3cojnh71l2tmwR4WsdlGPr4fR7CHf0?usp=drive_link)**    
 Put all the data files into the same project directory as your R scripts
 
-🟣 The course assignment is in the **SDM_assignment/** directory. Find all the relevant data in the same Google Drive folder provided above, in the [**assignment folder**](https://drive.google.com/drive/folders/1JXmjOVD9QxfNadFVna6n6dLdg5I8rvG7?usp=drive_link)
+### 🟣 The course assignment is in the ``SDM_assignment/`` directory. 
+Find all the relevant data in the same Google Drive folder provided above, in the [**assignment folder**](https://drive.google.com/drive/folders/1JXmjOVD9QxfNadFVna6n6dLdg5I8rvG7?usp=drive_link)
 
 <img src="africa_map.png" width="800" height="600"/>
 
