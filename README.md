@@ -13,6 +13,7 @@ We will create MaxEnt models to predict which regions of South Africa might be t
 The main coding file is ``sdm_R_code.html`` or ``sdm_R_code.rmd``
 
 🟣 **Download all the required data files from this [shared Google Drive folder](https://drive.google.com/drive/folders/1qe3cojnh71l2tmwR4WsdlGPr4fR7CHf0?usp=drive_link)**
+Put all the data files into the same project directory
 
 <img src="africa_map.png" width="800" height="600"/>
 
