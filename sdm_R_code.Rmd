@@ -17,6 +17,8 @@ Let's create a model to predict which regions of South Africa might be the most 
 
 Create a new R project in a folder on your PC, and run the code below bit by bit. You can save this all in one big script, or you can create multiple R scripts for each part of the process. You can use the command ```source("script_name.R")``` to read in a particular script into your R environment.
 
+All data required is available here: **https://drive.google.com/drive/folders/1qe3cojnh71l2tmwR4WsdlGPr4fR7CHf0?usp=drive_link**
+
 ### Install/load the required R packages, and set the aesthetic theme for the plots
 
 These are the R libraries required to run the various functions we will need. If these are not installed, use ```install.packages("library_name")``` to save and access the library.
@@ -30,7 +32,7 @@ if (!require(pacman)) install.packages("pacman")
 pacman::p_load(
   NicheMapR, magrittr, dplyr, tidyr, janitor, raster, sp, ggplot2, rgbif, dismo,
   ENMeval, sf, readr, terra, geodata, rnaturalearth, corrplot, gtools, igraph, usdm,
-  factoextra, gridExtra
+  factoextra, gridExtra, ecospat
 )
 
 # Change ggplot theme
@@ -109,8 +111,7 @@ We now have all 19 climate variables stored as **pred_clim**. Perhaps we want an
 
 ```{r echo=TRUE}
 
-dir.create("data/environmental_layers/elevation/", recursive = TRUE, showWarnings = FALSE)
-
+# dir.create("data/environmental_layers/elevation/", recursive = TRUE, showWarnings = FALSE)
 # pred_altitude = geodata::elevation_global(res = 2.5, path = here::here("data/environmental_layers/elevation/"))
 
 # if already downloaded, read in
@@ -149,27 +150,27 @@ predictors
 
 ```{r eval=FALSE}
 
-download all available Diaphorina citri records
-sp_gps_latest = geodata::sp_occurrence(
-  genus = "Diaphorina",
-  species = "citri",
-  download = TRUE,
-  geo = TRUE,
-  removeZeros = TRUE
-)
+# Download all available Diaphorina citri records from GBIF
+# sp_gps_latest = geodata::sp_occurrence(
+#   genus = "Diaphorina",
+#   species = "citri",
+#   download = TRUE,
+#   geo = TRUE,
+#   removeZeros = TRUE
+# )
 
-# # keep just the columns with species name, latitude, and longitude
-sp_gps_latest = sp_gps_latest %>% 
-   dplyr::select(species, lat, lon)
+# keep just the columns with species name, latitude, and longitude
+# sp_gps_latest = sp_gps_latest %>% 
+#    dplyr::select(species, lat, lon)
 
-saveRDS(object = sp_gps_latest, file = "sp_gps_latest.rds")
+# saveRDS(object = sp_gps_latest, file = "sp_gps_gbif.rds")
 
 # this Excel file contains additional GPS records from the published literature and from field observations
 sp_gps = readr::read_csv("data/gps/Diaphorina_citri.csv") %>%
   dplyr::select(species, lat = decimalLatitude, lon = decimalLongitude)
 
 # if already downloaded from GBIF, read in
-sp_gps_latest = readRDS("sp_gps_latest.rds")
+sp_gps_latest = readRDS("data/sp_gps_gbif.rds")
 
 # combine everything
 sp_gps = rbind(sp_gps, sp_gps_latest)
@@ -240,11 +241,11 @@ global_distr = ggplot() +
 global_distr
 
 # save the global map if desired
-dir.create("figures")
+if (!dir.exists("figures")) dir.create("figures")
 ggsave("figures/global_distribution_map.png", global_distr, dpi = 550)
 
 # Let's save a separate dataframe for the GPS records from the native range only
-species_native <- sp_data_thin %>%
+species_native = sp_data_thin %>%
   dplyr::filter(lon > 60)
 nrow(species_native)
 
@@ -422,7 +423,7 @@ reduced_preds = terra::subset(x = predictors, subset = vars_reduced_r2_VIF)
 # terra::writeRaster(reduced_preds, "reduced_preds.tif")
 
 # let's also save our presence GPS records
-saveRDS(object = sp_data_thin, file = "sp_data_thin.rds")
+saveRDS(object = sp_data_thin, file = "data/sp_data_thin.rds")
 
 ```
 
@@ -433,8 +434,8 @@ Now that we have the predictor variables we want, we need to set up a data frame
 ```{r eval=FALSE}
 
 # if not still in the R environment, read in our reduced predictor SpatRaster (tif file), and GPS presence points
-reduced_preds = terra::rast("reduced_preds.tif")
-sp_data_thin = readRDS("sp_data_thin.rds")
+reduced_preds = terra::rast("data/reduced_preds.tif")
+sp_data_thin = readRDS("data/sp_data_thin.rds")
 
 # extract all the data at the GPS points for ACP
 speciesEnv = base::data.frame( raster::extract(reduced_preds, 
@@ -467,7 +468,7 @@ head(speciesWd)
 presPoints = speciesWd  
 
 # save to file
-saveRDS(object = presPoints, file = "presPoints.rds")
+saveRDS(object = presPoints, file = "data/presPoints.rds")
 
 ```
 
@@ -503,13 +504,13 @@ kg_contain = sf::st_set_crs(kg_contain, crs_wgs84)
 
 bg_area = terra::mask(reduced_preds, kg_contain)  
 
-terra::writeRaster(bg_area, "bg_area.tif")
+terra::writeRaster(bg_area, "data/bg_area.tif")
 
 ```
 
 ```{r echo=TRUE}
 
-bg_area = terra::rast("bg_area.tif")
+bg_area = terra::rast("data/bg_area.tif")
 
 # Plot to check the mask worked
 terra::plot(bg_area$wc2.1_2.5m_bio_1)
@@ -558,21 +559,21 @@ head(bg_pointsWd)
 backPoints = bg_pointsWd 
 
 # save to file
-saveRDS(object = backPoints, file = "backPoints.rds")
+saveRDS(object = backPoints, file = "data/backPoints.rds")
 
 ```
 
 ```{r echo=TRUE}
 
-presPoints = readRDS("presPoints.rds")
-backPoints = readRDS("backPoints.rds")
+presPoints = readRDS("data/presPoints.rds")
+backPoints = readRDS("data/backPoints.rds")
 
 head(presPoints)
 head(backPoints)
 
 ```
 
-### Model Tuning
+### Setup for Model Tuning
 
 We have our presence and background GPS points for ACP, and now we need to find the best model parameters for running MaxEnt. This involves finding the optimal Feature Class (FC) and Regularisation Multiplier (RM) values, which will ensure that the predictions made are as accurate as they can be, given the input data.
 
@@ -586,15 +587,11 @@ if(!dir.exists("tuning")){
   dir.create("tuning")
 }
 
-if(!dir.exists("figs")){
-  dir.create("figs")
-}
-
 # let's read in our presence and background points from our WD
-presPoints = readRDS("presPoints.rds")
-backPoints = readRDS("backPoints.rds")
+presPoints = readRDS("data/presPoints.rds")
+backPoints = readRDS("data/backPoints.rds")
 # and our predictors again
-reduced_preds = terra::rast("reduced_preds.tif")
+reduced_preds = terra::rast("data/reduced_preds.tif")
 
 # we only need the lat and lon columns for the model tuning, so pull those out
 PRES.GPS = presPoints %>% dplyr::select(lon = decimalLongitude, lat = decimalLatitude)
@@ -742,7 +739,7 @@ Let's have a look at the contribution of each variable to the model.
 
 ```{r echo=TRUE}
 
-presPoints = readRDS("presPoints.rds")
+presPoints = readRDS("data/presPoints.rds")
 climate.df = dplyr::select(presPoints, !c(species, decimalLatitude, decimalLongitude))
 head(climate.df)
 
@@ -755,13 +752,14 @@ head(climate.df)
 
 # create a PCA
 pca_res = prcomp(climate.df, scale. = TRUE)
+summary(pca_res)
 loadings = pca_res$rotation
 loadings
 
 PCA = factoextra::fviz_pca_var(pca_res,
-                                        col.var = "contrib", # Color by contributions to the PC
-                                        gradient.cols = c("blue", "gold", "red"),
-                                        repel = TRUE) + theme_classic(); PCA
+                  col.var = "contrib", # Color by contributions to the PC
+                  gradient.cols = c("blue", "gold", "red"),
+                  repel = TRUE) + theme_classic(); PCA
 
 # Contributions of variables to PC1
 a = factoextra::fviz_contrib(pca_res, choice = "var", axes = 1)
@@ -774,6 +772,123 @@ pca_contribs = gridExtra::grid.arrange(a, b, ncol=2, top='Contribution of the va
 
 ```
 
+Let's plot the PCA again, but now let's have a look at whether there is any difference between the climate in the native versus the invaded range.
+
+```{r echo=TRUE}
+
+presPoints.new = presPoints %>%
+dplyr::mutate(range = dplyr::if_else(decimalLongitude > 60, "native", "nonnative"))
+
+head(presPoints.new)
+
+head(climate.df)
+
+pca_res_df = pca_res$x %>%
+  as.data.frame() %>%
+  # keep only PC1 and PC2
+  dplyr::select(c(PC1, PC2))
+
+pca_res_df$range = presPoints.new$range
+
+pca_plot = pca_res_df %>%
+  ggplot(aes(PC1, PC2, color = range)) + 
+  geom_point(size = 1.5, alpha = 0.5) +
+  scale_color_manual(
+    values = c(nonnative = "darkred", native = "forestgreen")
+  ) +
+  xlab("PC1 (32%)") +
+  ylab("PC2 (31%)") +
+  labs(color = "Range",
+       title = "ACP niche conservatism") +
+  # add lines through the origin 
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray") +
+  theme_classic()
+
+pca_plot
+
+# another approach, adding ellipses
+factoextra::fviz_pca_ind(pca_res, geom = "point",
+                         col.ind = presPoints.new$range,
+                         palette = c("forestgreen",  "darkred"),
+                         legend.title = "Range", alpha.ind = 0.5,
+                         addEllipses = TRUE) +
+                         scale_shape_manual(values=c(19,17))
+
+# run t-tests to see whether there is a difference between native vs non-native points on PC1, and PC2
+t.test(PC1 ~ range, data = pca_res_df)
+t.test(PC2 ~ range, data = pca_res_df)
+
+# looks like there is a difference on PC1, but not PC2
+
+# check the distribution of the data
+hist(pca_res_df$PC1)
+hist(pca_res_df$PC2)
+
+```
+
+Run a Schoener's D test to check niche overlap:
+
+```{r echo=TRUE}
+pca_native = pca_res_df %>%
+  dplyr::filter(range == "native") %>%
+  dplyr::select(PC1, PC2)
+
+pca_nonnative = pca_res_df %>%
+  dplyr::filter(range == "nonnative") %>%
+  dplyr::select(PC1, PC2)
+
+all_pca = pca_res_df %>%
+  dplyr::select(PC1, PC2)
+
+grid_native = ecospat::ecospat.grid.clim.dyn(glob = all_pca, glob1 = pca_native, sp = pca_native, R = 100)
+grid_nonnative = ecospat::ecospat.grid.clim.dyn(glob = all_pca, glob1 = pca_nonnative, sp = pca_nonnative, R = 100)
+
+# Schoener's D
+schoener_d = ecospat::ecospat.niche.overlap(grid_native, grid_nonnative, cor = FALSE)$D
+
+# Print the overlap value
+print(schoener_d)
+
+ecospat::ecospat.plot.niche.dyn(grid_native, grid_nonnative, quant = 0.1, interest = 2, title = "Niche Overlap", name.axis1 = "PC1", name.axis2 = "PC2", col.unf = "black", col.exp = "darkred", col.stab = "lightgreen", colZ1 = "darkgreen", colZ2 = "red", transparency = 60)
+```
+
+**Schoener's D interpretation:**
+
+0.0 → No overlap (completely distinct ecological niches)    
+0.5 → Moderate overlap (some shared environmental space)    
+1.0 → Complete overlap (both groups use the same niche)   
+
+Let's make some box-plots, showing each bioclimate variable (and elevation) across the native vs non-native range:
+
+```{r echo=TRUE}
+
+presPoints_long = presPoints.new %>%
+  tidyr::pivot_longer(cols = starts_with("wc2.1_2.5m_bio") | "wc2.1_2.5m_elev",  # Include elevation
+               names_to = "bio_variable", 
+               values_to = "value")
+
+new_names = c(paste0("bio_", c("1", "2", "5", "9", "12", "15", "19")), "elev")
+
+# Reorder and rename the bio_variable levels
+presPoints_long$bio_variable = factor(presPoints_long$bio_variable,
+                                       levels = c("wc2.1_2.5m_bio_1", "wc2.1_2.5m_bio_2", "wc2.1_2.5m_bio_5", 
+                                                  "wc2.1_2.5m_bio_9", "wc2.1_2.5m_bio_12", "wc2.1_2.5m_bio_15", 
+                                                  "wc2.1_2.5m_bio_19", "wc2.1_2.5m_elev"),
+                                       labels = new_names)
+
+# Plot boxplots for native vs non-native groups, faceted by bio variables and including elevation
+range.boxes = ggplot(presPoints_long, aes(x = range, y = value, fill = range)) +
+  geom_boxplot(alpha = 0.5) +
+  scale_fill_manual(values = c(nonnative = "darkred", native = "forestgreen")) +
+  facet_wrap(~ bio_variable, scales = "free_y") +  # Facet by bio variable with independent y-scales
+  labs(x = "Range (Native vs Non-native)", y = "Value", 
+       title = "ACP Bioclimatic Variables and Elevation by Range")
+
+range.boxes 
+
+```
+
 ## Create the MaxEnt model
 
 We are finally ready to create a MaxEnt model, which we can project onto any geographic area we like.
@@ -782,9 +897,9 @@ We are finally ready to create a MaxEnt model, which we can project onto any geo
 
 ```{r echo=TRUE}
 
-presPoints = readRDS("presPoints.rds")
-backPoints = readRDS("backPoints.rds")
-reduced_preds = terra::rast("reduced_preds.tif")
+presPoints = readRDS("data/presPoints.rds")
+backPoints = readRDS("data/backPoints.rds")
+reduced_preds = terra::rast("data/reduced_preds.tif")
 
 # bind the presence and absence data together into one data frame
 maxent_data = dplyr::bind_rows(presPoints, backPoints) %>% 
@@ -831,6 +946,45 @@ maxentModel1 = dismo::maxent(
 
 response_data = dismo::response(maxentModel1, expand = TRUE)
 
+# get the response data for each variable
+bio1.response = as.data.frame(dismo::response(maxentModel1, var = "wc2.1_2.5m_bio_1"))  %>%
+  dplyr::mutate(name = "bio1") %>% dplyr::rename(value = V1)
+
+bio2.response = as.data.frame(dismo::response(maxentModel1, var = "wc2.1_2.5m_bio_2"))%>%
+  dplyr::mutate(name = "bio2") %>% dplyr::rename(value = V1)
+
+bio5.response = as.data.frame(dismo::response(maxentModel1, var = "wc2.1_2.5m_bio_5"))%>%
+  dplyr::mutate(name = "bio5") %>% dplyr::rename(value = V1)
+
+bio9.response = as.data.frame(dismo::response(maxentModel1, var = "wc2.1_2.5m_bio_9")) %>%
+  dplyr::mutate(name = "bio9") %>% dplyr::rename(value = V1)
+
+bio12.response = as.data.frame(dismo::response(maxentModel1, var = "wc2.1_2.5m_bio_12"))%>%
+  dplyr::mutate(name = "bio12") %>% dplyr::rename(value = V1)
+
+bio15.response = as.data.frame(dismo::response(maxentModel1, var = "wc2.1_2.5m_bio_15"))%>%
+  dplyr::mutate(name = "bio15") %>% dplyr::rename(value = V1)
+
+bio19.response = as.data.frame(dismo::response(maxentModel1, var = "wc2.1_2.5m_bio_19"))%>%
+  dplyr::mutate(name = "bio19") %>% dplyr::rename(value = V1)
+
+elev.response = as.data.frame(dismo::response(maxentModel1, var = "wc2.1_2.5m_elev"))%>%
+  dplyr::mutate(name = "elevation") %>% dplyr::rename(value = V1)
+
+# join everything together
+bioresponses = rbind(bio1.response, bio2.response, bio5.response, bio9.response, bio12.response, bio15.response,
+                     bio19.response, elev.response) %>%
+  dplyr::mutate(name = factor(name, levels = c("bio1", "bio2", "bio5", "bio9", "bio12", "bio15", "bio19", "elevation")))
+
+# make a custom ggplot
+response.plots = ggplot(bioresponses, aes(x = value, y = p)) +
+  geom_line(linewidth = 1, colour = "darkgrey") +
+  facet_wrap(~name, scales = "free") +
+  labs(x = "Predictor Value", y = "Predicted Response", 
+       title = "Maxent Response Curves")
+
+response.plots
+
 ```
 
 Examine the model output files, particularly the response curves for each variable, and the importance of each variable to the model (contribution scores). Here, bio 1, 12, and 19 appear to have the greatest influence on the model. The average AUC test result is 0.83 (i.e. 83% accuracy).
@@ -854,7 +1008,7 @@ africa_ext = rnaturalearth::ne_countries(scale = "medium", returnclass = "sf") %
   dplyr::filter(continent == "Africa")
 
 # read in our predictors again
-reduced_preds = terra::rast("reduced_preds.tif")
+reduced_preds = terra::rast("data/reduced_preds.tif")
 
 # crop rasters
 africa_env_layers = raster::crop(reduced_preds, raster::extent(africa_ext))
@@ -916,7 +1070,7 @@ terra::plot(predict_maxent_africa)
 terra::writeRaster(predict_maxent_africa, "raster_projections/maxent_projection_africa.tif",
                    overwrite = TRUE)
 
-presPoints = readRDS("presPoints.rds")
+presPoints = readRDS("data/presPoints.rds")
 
 species_afr = presPoints %>%
   dplyr::filter(decimalLongitude > -26, decimalLatitude < 55, decimalLatitude > -48, decimalLatitude < 40)
@@ -979,12 +1133,12 @@ africa = ggplot() +
 ```{r eval=FALSE}
 
 # save the figure
-ggsave("figs/africa_map.png", plot = africa, width = 6, height = 6, dpi = 350)
+ggsave("figures/africa_map.png", plot = africa, width = 6, height = 6, dpi = 350)
 
 # save in a format that can be opened in Google Earth as a KML layer
 africa_kml = terra::project(predict_maxent_africa, "EPSG:4326")
 africa_kml = raster::raster(africa_kml)
-raster::KML(africa_kml, "figs/africa", maxpixels=5000000, overwrite = TRUE)
+raster::KML(africa_kml, "figures/africa", maxpixels=5000000, overwrite = TRUE)
 
 ```
 
@@ -1208,9 +1362,9 @@ prob_curve.africa = preds.africa %>%
 
 ```{r echo=TRUE}
 
-reduced_preds = terra::rast("reduced_preds.tif")
-presPoints = readRDS("presPoints.rds")
-backPoints = readRDS("backPoints.rds")
+reduced_preds = terra::rast("data/reduced_preds.tif")
+presPoints = readRDS("data/presPoints.rds")
+backPoints = readRDS("data/backPoints.rds")
 
 presPoints.native = presPoints %>%
   dplyr::filter(decimalLongitude > 60)
@@ -1224,9 +1378,9 @@ all.native = rbind(presPoints.native, backPoints.native) %>%
   dplyr::rename(lon = decimalLongitude, lat = decimalLatitude)
 
 NR_extent = sf::st_as_sf(all.native, coords = c("lon", "lat"), crs = 4326)
-NR_extent = sf::st_bbox(species_native_extent)
+NR_extent = sf::st_bbox(NR_extent)
 
-native_range_layers = raster::crop(reduced_preds, species_native_extent)
+native_range_layers = raster::crop(reduced_preds, NR_extent)
 #plot(native_range_layers$wc2.1_2.5m_bio_1)
 
 # use the model to predict climate suitability for the native range
@@ -1376,7 +1530,7 @@ Tanzania:
 ```{r echo=TRUE}
 
 # read in our predictors again
-reduced_preds = terra::rast("reduced_preds.tif")
+reduced_preds = terra::rast("data/reduced_preds.tif")
 
 tanzania_ext = rnaturalearth::ne_countries(scale = "medium",
                                            returnclass = "sf") %>%
@@ -1393,7 +1547,7 @@ terra::plot(predict_maxent_tanz)
 
 predict_maxent_tanz = terra::mask(predict_maxent_tanz, tanzania_ext)
 
-presPoints = readRDS("presPoints.rds")
+presPoints = readRDS("data/presPoints.rds")
 
 # Plot publication-quality figure  
 
@@ -1460,7 +1614,7 @@ predict_maxent_reunion = terra::predict(maxentModel1, reunion_map)
 predict_maxent_reunion = terra::mask(predict_maxent_reunion, reunion_ext)
 terra::plot(predict_maxent_reunion)
 
-presPoints = readRDS("presPoints.rds")
+presPoints = readRDS("data/presPoints.rds")
 
 # Plot publication-quality figure   
 
@@ -1478,11 +1632,11 @@ As an exploratory exercise, let's exclude all the GPS points from South America,
 ```{r echo=TRUE}
 
 # these were our original presence and background points
-presPoints = readRDS("presPoints.rds")
-backPoints = readRDS("backPoints.rds")
+presPoints = readRDS("data/presPoints.rds")
+backPoints = readRDS("data/backPoints.rds")
 
 # read in our predictors again
-reduced_preds = terra::rast("reduced_preds.tif")
+reduced_preds = terra::rast("data/reduced_preds.tif")
 
 # let's filter our presence and background points such that we remove all records from South America
 # woSA = without South America
@@ -1655,7 +1809,7 @@ africa.woSA = ggplot() +
 # save in a format that can be opened in Google Earth as a KML layer
 africa_kml.woSA = terra::project(predict_maxent_africa.woSA, "EPSG:4326")
 africa_kml.woSA = raster::raster(africa_kml.woSA)
-raster::KML(africa_kml.woSA, "figs/africa.woSA", maxpixels=5000000, overwrite = TRUE)
+raster::KML(africa_kml.woSA, "figures/africa.woSA", maxpixels=5000000, overwrite = TRUE)
 
 # plot them alongside each other using the gridExtra package
 # africa_projections = gridExtra::grid.arrange(africa, africa.woSA, nrow = 1) %>%
@@ -1732,7 +1886,7 @@ diffafrica.map = ggplot(diff_df) +
     fill = guide_colorbar(ticks = FALSE)
   ) ;diffafrica.map
 
-# ggsave("figs/africa_diff.png", plot = diffafrica.map, width = 6, height = 6, dpi = 350)
+# ggsave("figures/africa_diff.png", plot = diffafrica.map, width = 6, height = 6, dpi = 350)
 
 ```
 
@@ -1785,7 +1939,7 @@ ggplot() +
 # Now let's crop our predictor raster to South America
 
 # read in our predictors again
-reduced_preds = terra::rast("reduced_preds.tif")
+reduced_preds = terra::rast("data/reduced_preds.tif")
 
 southAmerica_ext = rnaturalearth::ne_countries(scale = "medium",
                                            returnclass = "sf") %>%
