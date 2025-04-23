@@ -10,7 +10,8 @@ We will create MaxEnt models to predict which regions of South Africa might be t
 
 ### 🟣 Download this repository by clicking **Code** ➡️ **Download ZIP"**
 
-The main coding file is ``sdm_R_code.html`` or ``sdm_R_code.rmd``
+The main coding file is ``sdm_R_code.html`` or ``sdm_R_code.rmd``    
+Daily R exercises are in the ``daily_exercises.html`` file
 
 ### 🟣 **Download all the required data folders in this [shared Google Drive folder](https://drive.google.com/drive/folders/1qe3cojnh71l2tmwR4WsdlGPr4fR7CHf0?usp=drive_link)**    
 Put all the data files into the same project directory as your R scripts
