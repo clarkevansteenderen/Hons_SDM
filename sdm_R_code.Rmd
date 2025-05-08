@@ -15,70 +15,33 @@ This introductory module to Species Distribution Modelling (SDM) will guide you 
 
 Let's create a model to predict which regions of South Africa might be the most climatically suitable for *D. citri*, and how it might enter the country through climatically-suitable routes.
 
-Create a new R project in a folder on your PC, and run the code below bit by bit. You can save this all in one big script, or you can create multiple R scripts for each part of the process. You can use the command ```source("script_name.R")``` to read in a particular script into your R environment.
+🟣 Create a new R project in a folder on your PC, and run the code below bit by bit. You can save this all in one big script, or you can create multiple R scripts for each part of the process. You can use the command ```source("script_name.R")``` to read in a particular script into your R environment.
 
-All data required is available here: **https://drive.google.com/drive/folders/1qe3cojnh71l2tmwR4WsdlGPr4fR7CHf0?usp=drive_link**
+🟣 All data required is available here: **https://drive.google.com/drive/folders/1qe3cojnh71l2tmwR4WsdlGPr4fR7CHf0?usp=drive_link**
+Save this data into the same directory as your R project.
+
+🟣 There are parts of the code that are for you to complete - these are marked by a green dot: 🟢
 
 ### Install/load the required R packages, and set the aesthetic theme for the plots
 
 These are the R libraries required to run the various functions we will need. If these are not installed, use ```install.packages("library_name")``` to save and access the library.
 
-```{r echo=TRUE, warning=FALSE, message=FALSE}
-
-# Install pacman if it's not already installed
-if (!require(pacman)) install.packages("pacman")
-
-# Use pacman to install/load the required libraries for the SDM scripts
-pacman::p_load(
-  NicheMapR, magrittr, dplyr, tidyr, janitor, raster, sp, ggplot2, rgbif, dismo,
-  ENMeval, sf, readr, terra, geodata, rnaturalearth, corrplot, gtools, igraph, usdm,
-  factoextra, gridExtra, ecospat
-)
-
-# Change ggplot theme
-theme_set(
-  theme_classic() +
-    theme(
-      panel.border = element_rect(colour = "black", fill = NA),
-      axis.text = element_text(colour = "black"),
-      axis.title.x = element_text(margin = unit(c(2, 0, 0, 0), "mm")),
-      axis.title.y = element_text(margin = unit(c(0, 4, 0, 0), "mm")),
-      legend.position = "none"
-    )
-)
-
-# Set the theme for the maps
-theme_opts = list(
-  theme(
-    panel.grid.minor = element_blank(),
-    panel.grid.major = element_blank(),
-    panel.background = element_rect(fill = 'white', colour = NA),
-    plot.background = element_rect(),
-    axis.line = element_blank(),
-    axis.text.x = element_text(colour = "black"),
-    axis.text.y = element_text(colour = "black"),
-    axis.ticks = element_line(colour = "black"),
-    axis.title.x = element_text(colour = "black"),
-    axis.title.y = element_text(colour = "black"),
-    plot.title = element_text(colour = "black"),
-    panel.border = element_rect(fill = NA),
-    legend.key = element_blank()
-  )
-)
+```{r eval=T, warning=FALSE, message=FALSE}
+source("setup.R")
 ```
 
 ### Get global climate variables (19 in total) from the [WorldClim Bioclimatic Database](https://www.worldclim.org/data/bioclim.html)
 
-This downloads the 19 climatic variables available on the WorldClim database to your PC, and loads them into R as a SpatRaster object.
+This downloads the 19 climatic variables available on the WorldClim database to your PC, and loads them into R as a SpatRaster object. The ``geodata::worldclim_global()`` code is commented out because the data has already been downloaded for you, and is in the ``data/`` folder. If you were downloading this for the first time, you would need to download from the WorldClim database. This data was downloaded at a 2.5 minute degree resolution. 
 
-```{r echo=TRUE}
+```{r eval=FALSE}
 
 # create a data folder in your current working directory
 
 # dir.create("data/environmental_layers/current", recursive = TRUE, showWarnings = FALSE)
 
 # IF THIS IS THE FIRST TIME, DOWNLOAD THE DATA FROM GBIF:
-# wc_current <- geodata::worldclim_global(
+# wc_current = geodata::worldclim_global(
 #     var = "bio",
 #     res = 2.5,      # Minute degree resolution of raster layers
 #     path = here::here("./data/environmental_layers/current/"),
@@ -86,7 +49,7 @@ This downloads the 19 climatic variables available on the WorldClim database to 
 # )
 
 # IF NOT THE FIRST TIME, load the WORLDCLIM rasters layers already downloaded 
-pred_clim <- terra::rast( list.files(
+pred_clim = terra::rast( list.files(
   here::here("data/environmental_layers/current/wc2.1_2.5m/") ,
   full.names = TRUE,
   pattern = '.tif'
@@ -109,9 +72,12 @@ We now have all 19 climate variables stored as **pred_clim**. Perhaps we want an
 
 ### Get elevation data
 
-```{r echo=TRUE}
+Here, we download elevation data in the same way as the climate data above:
+
+```{r eval=FALSE}
 
 # dir.create("data/environmental_layers/elevation/", recursive = TRUE, showWarnings = FALSE)
+
 # pred_altitude = geodata::elevation_global(res = 2.5, path = here::here("data/environmental_layers/elevation/"))
 
 # if already downloaded, read in
@@ -120,7 +86,7 @@ pred_elevation = terra::rast(x = here::here(
 )
 
 # Set the CRS
-terra::crs(pred_elevation) <- "epsg:4326"
+terra::crs(pred_elevation) = "epsg:4326"
 terra::crs(pred_elevation, describe = T)
 
 # plot
@@ -134,9 +100,13 @@ terra::res(pred_elevation)
 
 ### Combine climate and elevation data into one raster object
 
-```{r echo=TRUE}
+🟢 Create a list called ``raster_list``, into which you add the ``pred_clim`` and ``pred_elevation`` objects
 
-raster_list = list(pred_clim, pred_elevation)
+```{r eval=FALSE}
+
+raster_list = # CREATE LIST
+
+# this turns the objects in raster_list into a raster object
 predictors = terra::rast(raster_list) 
 
 # Check the variable contains all 20 variables 
@@ -148,42 +118,41 @@ predictors
 
 ### Download GPS records from GBIF
 
+🟢 Download all GBIF records for **Diaphorina citri** and:
+
+- Keep only the ``species``, ``lat``, and ``lon`` columns
+- Save the data frame as an RDS file
+- There is a CSV file in the ``data/gps/`` folder called ``Diaphorina_citri.csv``. Read this file into R, and select only the ``species``, ``lat``, and ``lon`` columns. Rename these columns like this: ``dplyr::select(species, lat = decimalLatitude, lon = decimalLongitude)``
+- Create a single data frame that contains both the GBIF download data, and the CSV data that you have just read in. Call this data frame ``sp_gps`` 
+- Select only the ``species``, ``lon``, and ``lat`` columns, and save that as a new object called ``sp_data``
+- Keep only distinct GPS coordinates
+
 ```{r eval=FALSE}
 
-# Download all available Diaphorina citri records from GBIF
-# sp_gps_latest = geodata::sp_occurrence(
-#   genus = "Diaphorina",
-#   species = "citri",
-#   download = TRUE,
-#   geo = TRUE,
-#   removeZeros = TRUE
-# )
+# Download all available Diaphorina citri records from GBIF here
 
-# keep just the columns with species name, latitude, and longitude
-# sp_gps_latest = sp_gps_latest %>% 
-#    dplyr::select(species, lat, lon)
+# keep just the columns with species name, latitude, and longitude values
 
-# saveRDS(object = sp_gps_latest, file = "sp_gps_gbif.rds")
+# save as RDS
 
-# this Excel file contains additional GPS records from the published literature and from field observations
-sp_gps = readr::read_csv("data/gps/Diaphorina_citri.csv") %>%
-  dplyr::select(species, lat = decimalLatitude, lon = decimalLongitude)
-
-# if already downloaded from GBIF, read in
-sp_gps_latest = readRDS("data/sp_gps_gbif.rds")
+# Read in the CSV file from here: data/gps/Diaphorina_citri.csv
 
 # combine everything
-sp_gps = rbind(sp_gps, sp_gps_latest)
+sp_gps = # BIND YOUR DATASETS HERE
 
-# Let's just keep the columns of data that we will use going forward 
+# Keep only the species, lon, and lat columns
 sp_data = sp_gps %>%
-  dplyr::select(species, lon, lat)
+  # SELECT COLUMNS HERE
 
 # remove duplicate GPS records
 sp_data = sp_data %>%
-  dplyr::distinct(lon, lat, .keep_all= TRUE)
+  # KEEP DISTINCT LAT AND LON RECORDS
 
-# Now we need to filter the data further so that we keep only one GPS record per grid cell
+```
+
+Now we need to filter the data further so that we keep only one GPS record per grid cell:
+
+```{r eval=FALSE}
 
 # Convert one of our environmental pred_clim into a raster layer 
 r = raster::raster(pred_clim[[1]])
@@ -206,9 +175,18 @@ sp_data_thin = dismo::gridSample(
 nrow(sp_data)
 nrow(sp_data_thin)
 
-# Plot our points on a world map
+```
 
-world_map <- rnaturalearth::ne_countries(
+Going forward, we'll use ``sp_data_thin`` as our data set of GPS points.
+
+🟢 Fill in the missing bits below to get a map of the world, with our GPS points overlaid onto it. The conditional ``ifelse`` statements in the ``geom_point(aes())`` section give different colours and shapes to the points in the native vs invaded range
+
+Now save the map as an RDS and PNG file.
+
+```{r eval=FALSE}
+
+# Get a world map
+world_map = rnaturalearth::ne_countries(
   scale = "medium", 
   returnclass = "sf"
 ) 
@@ -216,10 +194,10 @@ world_map <- rnaturalearth::ne_countries(
 # Plot GPS points on world map to check our locality data is correct 
 global_distr = ggplot() +
   # Add raster layer of world map 
-  geom_sf(data = world_map, alpha = 0.5) +
+  geom_sf(data = YOURWORLDMAP, alpha = 0.5) +
   # Add GPS points 
   geom_point(
-    data = sp_data_thin, 
+    data = YOURDATA, 
     size = 0.5,
     aes(
       x = lon, 
@@ -241,14 +219,40 @@ global_distr = ggplot() +
 global_distr
 
 # save the global map if desired
-if (!dir.exists("figures")) dir.create("figures")
-ggsave("figures/global_distribution_map.png", global_distr, dpi = 550)
+ggsave(SAVE HERE)
 
-# Let's save a separate dataframe for the GPS records from the native range only
+```
+
+🟢 Using your ``sp_data_thin`` data frame, create another data frame called ``species_native``, where you filter the original so that it only keeps records where the longitude is greater than 60 degrees East. This object will contain all records from the psyllid's native range in Asia.
+
+```{r eval=FALSE}
+
+# Filter GPS records from the native range only
+
 species_native = sp_data_thin %>%
-  dplyr::filter(lon > 60)
-nrow(species_native)
+  # FILTER LONGITUDE HERE
 
+# CHECK HOW MANY ROWS species_native HAS HERE
+
+```
+
+🟢 Now do the same for the invaded range, where you call the data frame ``species_invaded``. Filter the data so that you keep all records where longitude is less than 60 degrees East:
+
+```{r eval=FALSE}
+
+# Filter GPS records from the invaded range only
+
+# get just the invaded range (remove all native range GPS coordinates)
+species_invaded = sp_data_thin %>%
+  # FILTER LONGITUDE HERE
+  
+# CHECK HOW MANY ROWS species_invaded HAS HERE
+
+```
+
+The code block below just crops all our climate variable data to the size of the native and invaded ranges, so that we only have to work with the data we need (otherwise we retain all the climate data for the whole world, which is unnecessarily clumsy).
+
+```{r eval=FALSE}
 species_native_extent = sf::st_as_sf(species_native, coords = c("lon", "lat"), crs = 4326)
 species_native_extent = sf::st_bbox(species_native_extent)
 
@@ -256,22 +260,23 @@ species_native_extent = sf::st_bbox(species_native_extent)
 pred_clim_native_range = raster::crop(predictors, species_native_extent)
 plot(pred_clim_native_range$wc2.1_2.5m_bio_1)
 
-# get just the invaded range (remove all native range GPS coordinates)
-species_invaded = sp_data_thin %>%
-  dplyr::filter(lon < 60)
-nrow(species_invaded)
-
 species_invaded_extent = sf::st_as_sf(species_invaded, coords = c("lon", "lat"), crs = 4326)
 species_invaded_extent = sf::st_bbox(species_invaded_extent)
 
 pred_clim_invaded_range = raster::crop(predictors, species_invaded_extent)
 plot(pred_clim_invaded_range$wc2.1_2.5m_bio_1)
 
+```
+
+Here, we can have a look at how many GPS records fall within certain areas, if we provide the bounding boxes (lat and lon) for those regions:
+
+```{r eval=FALSE}
+
 #################################
 # How many points in the USA?
 #################################
 
-species_usa <- sp_data_thin %>%
+species_usa = sp_data_thin %>%
   dplyr::filter(lon > -127, lon< -65, lat > -5, lat < 50)
 
 print(paste("There are", nrow(species_usa), "GPS points in the USA.") )
@@ -280,7 +285,7 @@ print(paste("There are", nrow(species_usa), "GPS points in the USA.") )
 # How many points in Brazil?
 #################################
 
-species_braz <- sp_data_thin %>%
+species_braz = sp_data_thin %>%
   dplyr::filter(lon > -73.99, lon < -34.80, lat > -33.75, lat < 5.27)
 
 print(paste("There are", nrow(species_braz), "GPS points in Brazil.") )
@@ -289,7 +294,7 @@ print(paste("There are", nrow(species_braz), "GPS points in Brazil.") )
 # How many points in Africa?
 #################################
 
-species_afr <- sp_data_thin %>%
+species_afr = sp_data_thin %>%
   dplyr::filter(lon > -26, lon < 55, lat > -48, lat < 40)
 
 print(paste("There are", nrow(species_afr), "GPS points in Africa.") )
@@ -303,7 +308,7 @@ We currently have 20 variables: 19 climate and 1 elevation. There will be some v
 ```{r eval=FALSE}
 
 # Extract the climate and elevation data at each presence GPS record for ACP
-clim_sp <- terra::extract(
+clim_sp = terra::extract(
   x = predictors,  # SpatRast containing all 19 WORLDCLIM layers + elevation
   y = sp_data_thin # data.frame containing GPS of study taxon (lon, lat)
 ) %>%
@@ -312,9 +317,11 @@ clim_sp <- terra::extract(
 
 # create a copy of clim_sp, so that we can run a correlation test on it without altering the original
 clim_sp_corr = clim_sp
+
 # change the variable names to a shorter simpler version
 new_colnames = gsub(".*_(\\d+)$", "\\1", names(clim_sp_corr))
 names(clim_sp_corr) = new_colnames
+
 # order the variables from 1 to 19, rather than 1, 10, 11, etc.
 clim_sp_corr = clim_sp_corr[, gtools::mixedsort(names(clim_sp_corr))]
 
@@ -331,8 +338,10 @@ corrplot::corrplot(cor_mat, type = "upper", order = "original",
 
 # identify strongly correlated variables
 # 0.7 is a standard threshold in the literature, but you can alter this value
+
 CORR.VAL = 0.7
 cor_mat[cor_mat < CORR.VAL & cor_mat > -CORR.VAL] = 0
+
 # create a correlation newtork
 network = igraph::graph_from_adjacency_matrix(cor_mat, weighted=T, mode="undirected", diag=F)
 plot(network, vertex.color = "lightgreen")
@@ -420,16 +429,13 @@ vars_reduced_r2_VIF = c(
 reduced_preds = terra::subset(x = predictors, subset = vars_reduced_r2_VIF)
 
 # write this raster as a tif file
-# terra::writeRaster(reduced_preds, "reduced_preds.tif")
-
-# let's also save our presence GPS records
-saveRDS(object = sp_data_thin, file = "data/sp_data_thin.rds")
+terra::writeRaster(reduced_preds, "reduced_preds.tif")
 
 ```
 
 ### Presence Points
 
-Now that we have the predictor variables we want, we need to set up a data frame that contains the variable data at each recorded presence GPS point. 
+Now that we have the predictor variables we want, we need to set up a data frame that contains the climate variable data at each recorded presence GPS point. 
 
 ```{r eval=FALSE}
 
@@ -474,10 +480,11 @@ saveRDS(object = presPoints, file = "data/presPoints.rds")
 
 ### Background Points (Pseudo-absences)
 
-We need to generate background GPS points where we are unlikely to record ACP. This is quite a debated topic in SDM work, as these pseudo-absence points are generated based on statistical approaches, rather than actual verified data. Nevertheless, a good approach is to select points from regions that are at least somewhat similar to presence areas in terms of climate type. Here, we'll use Koppen-Geiger climate data to select similar ecoregions to randomly sample points from.
+We need to generate background GPS points where we are unlikely to record ACP. This is quite a debated topic in SDM work, as these pseudo-absence points are generated based on statistical approaches, rather than actual verified data. Nevertheless, a good approach is to select points from regions that are at least somewhat similar to presence areas in terms of climate type. Here, we'll use Köppen-Geiger climate data to select similar eco-regions to randomly sample points from.
 
 ```{r eval=FALSE}
 
+# read in the koppen-geiger (KG) data
 kg_layer = sf::st_read("koppen_geiger")
 
 # Reproject KG layer
@@ -508,16 +515,17 @@ terra::writeRaster(bg_area, "data/bg_area.tif")
 
 ```
 
-```{r echo=TRUE}
+```{r eval=T}
 
+presPoints = readRDS("data/presPoints.rds")
 bg_area = terra::rast("data/bg_area.tif")
 
-# Plot to check the mask worked
+# Plot to check the mask worked -> this is the area where we will pick background points from
 terra::plot(bg_area$wc2.1_2.5m_bio_1)
 
 ```
 
-Now that we have an area from which to select background points, we can go ahead and randomly select 10,000 points (without replacement). Then, as before, we will extract our predictor variable data at those points and create a SpatRaster tif file.
+Now that we have an area from which to select background points, we can go ahead and randomly select 10,000 points (without replacement). Then, as before, we will extract our predictor variable data at those points and create a SpatRaster .tif file.
 
 ```{r eval=FALSE}
 
@@ -536,6 +544,47 @@ bg_points = terra::spatSample(
 dplyr::rename(lon = x, lat = y)
   
 head(bg_points)
+
+terra::plot(bg_area$wc2.1_2.5m_bio_1)
+points(bg_points$lon, 
+       bg_points$lat, 
+       pch = 21, 
+       bg = 'black', 
+       cex = 0.2)
+points(sp_data_thin$lon, 
+       sp_data_thin$lat, 
+       pch = 21, 
+       bg = 'red', 
+       cex = 1)
+
+```
+
+If you want to make sure that no background points are selected at the same position as a presence point, you can use the ``predicts::backgroundSample()`` function shown below. 
+
+```{r eval=FALSE}
+bg_points2 = predicts::backgroundSample(
+  mask = bg_area,
+  n = 10000,
+  p = sp_data_thin,
+  excludep = TRUE
+)
+
+head(bg_points2)
+``` 
+
+Alternatively, you could take your ``bg_points`` from before, compare it to your presence points in ``sp_data_thin``, and remove any lon-lat pairs that are identical:
+
+```{r eval=F}
+# Assume df1 and df2 have columns "lon" and "lat"
+common_points = dplyr::inner_join(bg_points, sp_data_thin, by = c("lon", "lat"))
+
+# View how many matches were found
+nrow(common_points)
+```
+
+Here, none are identical, so we can proceed.
+
+```{r eval=F}
 
 # clean the data frame, and add a column with the species name for ACP
 bg_pointsWd = as.data.frame(bg_points) %>%
@@ -563,20 +612,80 @@ saveRDS(object = backPoints, file = "data/backPoints.rds")
 
 ```
 
-```{r echo=TRUE}
+As an aside, let's add some buffering around presence points, and remove any background points that fall within that buffer. Let's try a 300 km buffer zone around each presence point:
+
+```{r eval=F}
+# Convert data frames to sf objects
+pres_sf = sf::st_as_sf(sp_data_thin, coords = c("lon", "lat"), crs = 4326)
+bg_sf = sf::st_as_sf(bg_points, coords = c("lon", "lat"), crs = 4326)
+
+# Transform to projected CRS (for distance-based buffering in meters)
+pres_sf_proj = sf::st_transform(pres_sf, crs = 3395)
+bg_sf_proj   = sf::st_transform(bg_sf, crs = 3395)
+
+# Create buffer around presence points (in meters)
+# let's apply a 300 km buffer zone here. You can experiment with other values
+pres_buffer = st_buffer(pres_sf_proj, dist = 300000)
+
+# Combine buffers into a single geometry
+pres_union = st_union(pres_buffer)
+
+# Filter out background points that fall within the buffer
+bg_filtered = bg_sf_proj[!st_intersects(bg_sf_proj, pres_union, sparse = FALSE), ]
+
+# Transform back to geographic coordinates
+bg_filtered_latlon = st_transform(bg_filtered, crs = 4326)
+
+# Convert back to data frame 
+backPoints.buffer = bg_filtered_latlon %>%
+ dplyr::mutate(lon = st_coordinates(.)[,1],
+         lat = st_coordinates(.)[,2]) %>%
+  sf::st_drop_geometry()
+
+terra::plot(bg_area$wc2.1_2.5m_bio_1)
+points(backPoints.buffer$lon, 
+       backPoints.buffer$lat, 
+       pch = 21, 
+       bg = 'black', 
+       cex = 0.2)
+points(sp_data_thin$lon, 
+       sp_data_thin$lat, 
+       pch = 21, 
+       bg = 'red', 
+       cex = 1)
+
+# save to file
+saveRDS(object = backPoints.buffer, file = "data/backPoints.buffer.rds")
+
+```
+
+With the buffering, you should get a map like this:
+
+```{r eval=T}
 
 presPoints = readRDS("data/presPoints.rds")
 backPoints = readRDS("data/backPoints.rds")
+backPoints.buffer = readRDS("data/backPoints.buffer.rds")
 
-head(presPoints)
-head(backPoints)
+bg_area = terra::rast("data/bg_area.tif")
+
+terra::plot(bg_area$wc2.1_2.5m_bio_1)
+points(backPoints.buffer$lon, 
+       backPoints.buffer$lat, 
+       pch = 21, 
+       bg = 'black', 
+       cex = 0.2)
+points(presPoints$decimalLongitude, 
+       presPoints$decimalLatitude, 
+       pch = 21, 
+       bg = 'red', 
+       cex = 1)
 
 ```
 
 ### Setup for Model Tuning
 
 We have our presence and background GPS points for ACP, and now we need to find the best model parameters for running MaxEnt. This involves finding the optimal Feature Class (FC) and Regularisation Multiplier (RM) values, which will ensure that the predictions made are as accurate as they can be, given the input data.
-
 
 ```{r eval=FALSE}
 
@@ -617,6 +726,28 @@ terra::plot(predictor_data$wc2.1_2.5m_bio_1)
 
 Now we are ready to start the model tuning process. This can take minutes to hours, depending on the size of the data, and how many FC and RM values you want to test. Sometimes this can cause your R session to crash, if it is too memory intensive for your computer. Setting the java.parameters option could help, otherwise you may need to restart R.
 
+Have a look at how spatial folds are applied by ``ENMevaluate`` when tuning model paramaters.
+Presence and background points are divided into four major geographic blocks. Each fold uses one block as test data and the remaining three blocks as training data ENMeval performs cross-validation across these four folds, training a model on three blocks and testing on the held-out block, repeating for each block. Performance metrics (e.g., test AUC) are averaged across folds.
+
+There are other methods available, such as the checkerboard approach. See the ENMeval manual: https://jamiemkass.github.io/ENMeval/articles/ENMeval-2.0-vignette.html
+
+```{r eval=F}
+
+block = ENMeval::get.block(PRES.GPS, BACK.GPS, orientation = "lat_lon")
+table(block$occs.grp)
+ENMeval::evalplot.grps(pts = BACK.GPS, pts.grp = block$bg.grp, envs = predictor_data) + 
+  ggplot2::ggtitle("Spatial block partitions: background")
+ENMeval::evalplot.grps(pts = PRES.GPS, pts.grp = block$occs.grp, envs = predictor_data) + 
+  ggplot2::ggtitle("Spatial block partitions: presences")
+
+occs.z = cbind(PRES.GPS, terra::extract(predictor_data, PRES.GPS, ID = FALSE))
+bg.z = cbind(BACK.GPS, terra::extract(predictor_data, BACK.GPS, ID = FALSE))
+evalplot.envSim.hist(occs.z = occs.z, bg.z = bg.z, occs.grp = block$occs.grp, 
+                     bg.grp = block$bg.grp, ref.data = "occs")
+```
+
+This code block shows you how you would run model tuning from scratch. You don't need to run this block - the model has already been made for you.
+
 ```{r eval=FALSE}
 
 # helps with memory allocation for Java
@@ -630,7 +761,7 @@ list_settings = list(
 set.seed(2023)
 dismo::maxent()
 
-# Run the tuning analysis (ctrl + shift + c)
+# Run the tuning analysis
 
 tuning_results =
   ENMeval::ENMevaluate(
@@ -665,7 +796,7 @@ write.csv(df_long, file = "tuning/model_tuning_enmeval.csv",
 
 ``` 
 
-```{r echo=TRUE}
+```{r eval=T}
 
 # I have already run this tuning analysis, and so we can read the results in to proceed
 
@@ -690,31 +821,31 @@ Find the best models, optimising different metrics.
 res = read.csv("tuning/model_tuning_enmeval_full.csv")
 
 # Select the model settings (RM and FC) that optimised AICc (delta AICc == 0)
-best_delta_aicc <- res %>% 
+best_delta_aicc = res %>% 
   dplyr::filter(delta.AICc == 0) ;best_delta_aicc
 best_delta_aicc_output = best_delta_aicc %>% t(.)
 write.table(best_delta_aicc_output, "tuning/LQH1_model.txt", quote = FALSE)
 
 # select the model that optimised AUC (highest AUC value)
-best_auc <- res %>% 
+best_auc = res %>% 
   dplyr::filter(auc.val.avg == max(auc.val.avg)) ;best_auc
 best_auc_test_output = best_auc %>% t(.)
 write.table(best_auc_test_output, "tuning/H3_model.txt", quote = FALSE)
 
 # select the model that optimised CBI (highest CBI value)
-best_cbi <- res %>% 
+best_cbi = res %>% 
   dplyr::filter(cbi.val.avg == max(cbi.val.avg)) ;best_cbi
 best_cbi_output = best_cbi %>% t(.)
 write.table(best_cbi_output, "tuning/H1_model.txt", quote = FALSE)
 
 # select the model that optimised the 10% omission rate (lowest or.10p value)
-best_or.10p.avg <- res %>% 
+best_or.10p.avg = res %>% 
   dplyr::filter(or.10p.avg == min(or.10p.avg)) ;best_or.10p.avg
 best_or.10p.avg_output = best_or.10p.avg %>% t(.)
 write.table(best_or.10p.avg_output, "tuning/H7_model.txt", quote = FALSE)
 
 # default model output
-default_mod_results <- res %>% 
+default_mod_results = res %>% 
   dplyr::filter(tune.args == "fc.LQH_rm.1") 
 default_mod_results = default_mod_results %>% t(.)
 write.table(default_mod_results, "tuning/best_model_default.txt", quote = FALSE)
@@ -733,11 +864,13 @@ Area under the curve (AUC) values are commonly used to report model accuracy. He
 
 The model optimising for AUC (FC = H, RM = 3) is the best, with an AUC value of 85% accuracy.
 
+There are auc.train, auc.diff.avg, auc.diff.sd, auc.val.avg, and auc.val.sd values. We're interested in the auc.train (accuracy on the training data) and auc.val.avg (accuracy on the test data) values. The auc.val.sd value of 0.03 shows the variation on the four-fold cross validation approach we took earlier in ``ENMeval``.
+
 ### Principal Component Analysis - explore predictor variables
 
 Let's have a look at the contribution of each variable to the model.
 
-```{r echo=TRUE}
+```{r eval=T}
 
 presPoints = readRDS("data/presPoints.rds")
 climate.df = dplyr::select(presPoints, !c(species, decimalLatitude, decimalLongitude))
@@ -774,7 +907,7 @@ pca_contribs = gridExtra::grid.arrange(a, b, ncol=2, top='Contribution of the va
 
 Let's plot the PCA again, but now let's have a look at whether there is any difference between the climate in the native versus the invaded range.
 
-```{r echo=TRUE}
+```{r eval=T}
 
 presPoints.new = presPoints %>%
 dplyr::mutate(range = dplyr::if_else(decimalLongitude > 60, "native", "nonnative"))
@@ -829,7 +962,7 @@ hist(pca_res_df$PC2)
 
 Run a Schoener's D test to check niche overlap:
 
-```{r echo=TRUE}
+```{r eval=T}
 pca_native = pca_res_df %>%
   dplyr::filter(range == "native") %>%
   dplyr::select(PC1, PC2)
@@ -861,7 +994,7 @@ ecospat::ecospat.plot.niche.dyn(grid_native, grid_nonnative, quant = 0.1, intere
 
 Let's make some box-plots, showing each bioclimate variable (and elevation) across the native vs non-native range:
 
-```{r echo=TRUE}
+```{r eval=T}
 
 presPoints_long = presPoints.new %>%
   tidyr::pivot_longer(cols = starts_with("wc2.1_2.5m_bio") | "wc2.1_2.5m_elev",  # Include elevation
@@ -891,11 +1024,13 @@ range.boxes
 
 ## Create the MaxEnt model
 
-We are finally ready to create a MaxEnt model, which we can project onto any geographic area we like.
+We are finally ready to create a MaxEnt model, which we can project onto any geographic area we like. Keep in mind though the distinction between model interpolation and extrapolation, and the reliability of the model considering the range of values that it was trained on.
+
+Our best model was H3, and so we will set ``'betamultiplier=3.0'`` and ``'hinge=true'``.
 
 ### Fit the MaxEnt model
 
-```{r echo=TRUE}
+```{r eval=T}
 
 presPoints = readRDS("data/presPoints.rds")
 backPoints = readRDS("data/backPoints.rds")
@@ -987,11 +1122,11 @@ response.plots
 
 ```
 
-Examine the model output files, particularly the response curves for each variable, and the importance of each variable to the model (contribution scores). Here, bio 1, 12, and 19 appear to have the greatest influence on the model. The average AUC test result is 0.83 (i.e. 83% accuracy).
+Examine the model output files, particularly the response curves for each variable, and the importance of each variable to the model (contribution scores). Here, bio 1, 12, and 19 appear to have the greatest influence on the model. The average AUC result is 0.83 (i.e. 83% accuracy on the training data).
 
 ### Set up the prediction area
 
-Now that we have created our MaxEnt model, we need to decide where we want to project it, and then create raster layers for that area using our set of predictor variables.
+Now that we have created our MaxEnt model, we need to decide where we want to project it, and then create raster layers for that area using our set of predictor variables. Below, we will create raster layers for the African continent:
 
 ```{r eval = FALSE}
 
@@ -1020,7 +1155,7 @@ terra::writeRaster(africa_env_layers, "africa_env_layers/africa_env_layers.tif",
 
 ```
 
-```{r echo=TRUE}
+```{r eval=T}
 
 terra::rast("africa_env_layers/africa_env_layers.tif") %>% plot()
 
@@ -1047,7 +1182,9 @@ for (p in names(reduced_preds)){
 
 ## Project the MaxEnt model
 
-```{r echo=TRUE}
+Finally we can do some projecting!
+
+```{r eval=FALSE}
 
 if(!dir.exists("raster_projections")){
   dir.create("raster_projections")
@@ -1072,6 +1209,7 @@ terra::writeRaster(predict_maxent_africa, "raster_projections/maxent_projection_
 
 presPoints = readRDS("data/presPoints.rds")
 
+# filter to get points just in Africa
 species_afr = presPoints %>%
   dplyr::filter(decimalLongitude > -26, decimalLatitude < 55, decimalLatitude > -48, decimalLatitude < 40)
 
@@ -1128,23 +1266,25 @@ africa = ggplot() +
     fill = guide_colorbar(ticks = FALSE)
   ) ;africa
 
+# save the figure
+ggsave("figures/africa_map.png", plot = africa, width = 6, height = 6, dpi = 350)
+saveRDS(africa, "figures/africa_map.rds")
+
 ```
+
+Save in a format that can be opened in Google Earth as a KML layer:
 
 ```{r eval=FALSE}
 
-# save the figure
-ggsave("figures/africa_map.png", plot = africa, width = 6, height = 6, dpi = 350)
-
-# save in a format that can be opened in Google Earth as a KML layer
 africa_kml = terra::project(predict_maxent_africa, "EPSG:4326")
 africa_kml = raster::raster(africa_kml)
 raster::KML(africa_kml, "figures/africa", maxpixels=5000000, overwrite = TRUE)
 
 ```
 
-Let's write a quick function to plot maps. This saves us the trouble of re-using the same ggplot code over and over again; making the coding process more efficient. Every time we want to plot a raster prediction layer, we can just call this function. Let's call it **plot.predmap**.
+Let's write a quick function to plot maps. This saves us the trouble of re-using the same ggplot code over and over again; making the coding process more efficient. Every time we want to plot a raster prediction layer, we can just call this function. Let's call it ``plot.predmap``:
 
-```{r, echo=TRUE}
+```{r, eval=T}
 
 plot.predmap = function(raster, EXT, title = "", arrow.pos = "bl", scale.pos = "bl"){
   
@@ -1204,7 +1344,7 @@ plot.predmap = function(raster, EXT, title = "", arrow.pos = "bl", scale.pos = "
 
 A quick example of how one would use the function to plot the prediction for Africa:
 
-``` {r, echo=TRUE}
+``` {r, eval=FALSE}
 
 africa = plot.predmap(raster = predict_maxent_africa, EXT = africa_ext, title = "Africa")
 
@@ -1221,11 +1361,13 @@ africa
 
 ```
 
-### Some quick stats -> model performance
+### Some quick stats: how well did the model perform?
 
 ## How well did the model perform for the African continent?
 
-```{r echo=TRUE}
+```{r eval=T}
+
+predict_maxent_africa = terra::rast("raster_projections/maxent_projection_africa.tif")
 
 # convert presence and background points into vector objects
 prespoints.vect = terra::vect(
@@ -1320,10 +1462,10 @@ clim_data_africa_absences = dplyr::filter(clim_data.africa, pres == 0)
 #################################
 
 # find the optimal threshold, based on the model
-e.africa = evaluate(p = presPoints, a = backPoints, model = maxentModel1)
+e.africa = dismo::evaluate(p = presPoints, a = backPoints, model = maxentModel1)
 
 # View various thresholds
-thresholds.africa = threshold(e.africa)
+thresholds.africa = dismo::threshold(e.africa)
 print(thresholds.africa)
 
 # Define a threshold
@@ -1360,7 +1502,7 @@ prob_curve.africa = preds.africa %>%
 
 ### How well did the model perform in the native range?
 
-```{r echo=TRUE}
+```{r eval=T}
 
 reduced_preds = terra::rast("data/reduced_preds.tif")
 presPoints = readRDS("data/presPoints.rds")
@@ -1483,10 +1625,10 @@ clim_data_NR_absences = dplyr::filter(clim_data.NR, pres == 0)
 #################################
 
 # find the optimal threshold, based on the model
-e.NR = evaluate(p = presPoints.native, a = backPoints.native, model = maxentModel1)
+e.NR = dismo::evaluate(p = presPoints.native, a = backPoints.native, model = maxentModel1)
 
 # View various thresholds
-thresholds.NR = threshold(e.NR)
+thresholds.NR = dismo::threshold(e.NR)
 print(thresholds.NR)
 
 # Define a threshold
@@ -1527,7 +1669,7 @@ Let's plot prediction maps for Tanzania and South Africa specifically, as there 
 
 Tanzania:
 
-```{r echo=TRUE}
+```{r eval=T}
 
 # read in our predictors again
 reduced_preds = terra::rast("data/reduced_preds.tif")
@@ -1557,7 +1699,7 @@ tanzania = plot.predmap(raster = predict_maxent_tanz, EXT = tanzania_ext, title 
 
 South Africa:
 
-```{r echo=TRUE}
+```{r eval=T}
 
 southafrica_ext = rnaturalearth::ne_countries(scale = "medium",
                                            returnclass = "sf") %>%
@@ -1597,11 +1739,11 @@ southAfrica
 
 We can even have a look at Reunion Island, where ACP has been reported recently.
 
-```{r echo=TRUE}
+```{r eval=T}
 # potentially run this if the function can't find Réunion because of the é
 # Sys.setlocale("LC_ALL", "en_US.UTF-8")
 
-reunion_ext <- rnaturalearth::ne_states(country = "France", returnclass = "sf") %>%
+reunion_ext = rnaturalearth::ne_states(country = "France", returnclass = "sf") %>%
   dplyr::filter(grepl("Réunion", name, ignore.case = TRUE))
 
 reunion_ext = sf::st_set_crs(reunion_ext, 4326)
@@ -1629,7 +1771,7 @@ Something interesting to explore is manually excluding occurrence points from a 
 
 As an exploratory exercise, let's exclude all the GPS points from South America, and re-run the model. We'll then validate the model using these independent points.
 
-```{r echo=TRUE}
+```{r eval=T}
 
 # these were our original presence and background points
 presPoints = readRDS("data/presPoints.rds")
@@ -1657,7 +1799,7 @@ nrow(backPoints)
 nrow(backPoints.woSA)
 
 # plot on a world map to confirm
-world_map <- rnaturalearth::ne_countries(
+world_map = rnaturalearth::ne_countries(
   scale = "medium", 
   returnclass = "sf"
 ) 
@@ -1739,7 +1881,18 @@ dismo::response(maxentModel1, expand = TRUE)
 Now let's project this new model onto Africa, and compare it to the model where we included South American points.
 
 
-```{r echo=TRUE}
+```{r eval=T}
+
+africa_ext = rnaturalearth::ne_countries(scale = "medium", returnclass = "sf") %>%
+  dplyr::filter(continent == "Africa")
+
+# filter to get points just in Africa
+species_afr = presPoints %>%
+  dplyr::filter(decimalLongitude > -26, decimalLatitude < 55, decimalLatitude > -48, decimalLatitude < 40)
+
+africa_ext = sf::st_set_crs(africa_ext, 4326)
+
+africa_env_layers = terra::rast("africa_env_layers/africa_env_layers.tif")
 
 # use the model to predict climate suitability for Africa
 predict_maxent_africa.woSA = terra::predict(maxentModel.woSA, africa_env_layers)
@@ -1821,7 +1974,7 @@ Note the differences in suitable area prediction when the South American points 
 
 Let's restrict our Africa maps to show only the areas that have climatic suitability predictions of 0.75 and above, and calculate the difference in suitable area between the two. We will then validate the second MaxEnt model using the independent South American points.
 
-```{r echo=TRUE}
+```{r eval=T}
 
 predict_maxent_africa = terra::rast("raster_projections/maxent_projection_africa.tif")
 predict_maxent_africa.woSA = terra::rast("raster_projections/maxent_projection_africa.woSA.tif")
@@ -1894,7 +2047,7 @@ In the above plot, the green areas show where the full model (including South Am
 
 Let's use the South American points now to validate our latest MaxEnt model. First, we need to create objects that contain presence and background points for South America, and a raster layer with our predictor variables for the continent.
 
-```{r echo=TRUE}
+```{r eval=T}
 
 # Since we already had these presence and background points in our original datasets, let's create subsets that contain just those South American points
 
@@ -1907,7 +2060,7 @@ backPoints.SAm = backPoints %>%
            decimalLongitude >= -81 & decimalLongitude <= -34)
 
 # plot on a world map to confirm
-world_map <- rnaturalearth::ne_countries(
+world_map = rnaturalearth::ne_countries(
   scale = "medium", 
   returnclass = "sf"
 ) 
@@ -1959,7 +2112,7 @@ terra::plot(predict_maxent_SAm)
 
 Now we need to extract the MaxEnt suitability score at each presence and background point in South America
 
-```{r echo=TRUE}
+```{r eval=T}
 
 prespoints.vect = terra::vect(
   presPoints.SAm,
@@ -2018,7 +2171,7 @@ clim_data.SAm = dplyr::bind_rows(maxent_pres_scores, maxent_background_scores)
 
 Now that we have predicted MaxEnt scores for each presence and background point in South America, we can run a GLM to see whether the presence of ACP can be reliably predicted given a suitability score generated by the model we built (which excluded South American points). In other words, can the model we created distinguish between presence and background points for ACP?
 
-```{r echo=TRUE}
+```{r eval=T}
 
 #############################################################
 # Fit statistical model  
@@ -2062,7 +2215,7 @@ clim_data_absences = dplyr::filter(clim_data.SAm, pres == 0)
 e.SAm = evaluate(p = presPoints.SAm, a = backPoints.SAm, model = maxentModel.woSA)
 
 # View various thresholds
-thresholds.SAm = threshold(e.SAm)
+thresholds.SAm = dismo::threshold(e.SAm)
 print(thresholds.SAm)
 
 # Define a threshold
@@ -2097,7 +2250,7 @@ prob_curve_SAm = preds %>%
 
 ```
 
-```{r, echo=TRUE}
+```{r, eval=T}
 
 gridExtra::grid.arrange(prob_curve.africa, prob_curve_SAm, prob_curve.NR, nrow = 1)
 
