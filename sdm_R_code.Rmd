@@ -20,13 +20,13 @@ Let's create a model to predict which regions of South Africa might be the most 
 🟣 All data required is available here: **https://drive.google.com/drive/folders/1qe3cojnh71l2tmwR4WsdlGPr4fR7CHf0?usp=drive_link**
 Save this data into the same directory as your R project.
 
-🟣 There are parts of the code that are for you to complete - these are marked by a green dot: 🟢
+🟢 There are parts of the code that are for you to complete - these are marked by a green dot: 🟢
 
 ### Install/load the required R packages, and set the aesthetic theme for the plots
 
 These are the R libraries required to run the various functions we will need. If these are not installed, use ```install.packages("library_name")``` to save and access the library.
 
-```{r eval=T, warning=FALSE, message=FALSE}
+```{r eval=TRUE, warning=FALSE, message=FALSE}
 source("setup.R")
 ```
 
@@ -177,9 +177,11 @@ nrow(sp_data_thin)
 
 ```
 
+🟢 Compare the number of rows between ``sp_data`` and ``sp_data_thin`` -> How many records were dropped when we extracted one GPS record per grid cell?
+
 Going forward, we'll use ``sp_data_thin`` as our data set of GPS points.
 
-🟢 Fill in the missing bits below to get a map of the world, with our GPS points overlaid onto it. The conditional ``ifelse`` statements in the ``geom_point(aes())`` section give different colours and shapes to the points in the native vs invaded range
+🟢 Fill in the missing bits below to get a map of the world, with our GPS points overlaid onto it. The conditional ``ifelse`` statements in the ``geom_point(aes())`` section give different colours and shapes to the points in the native vs invaded range.
 
 Now save the map as an RDS and PNG file.
 
@@ -218,16 +220,15 @@ global_distr = ggplot() +
 
 global_distr
 
-# save the global map if desired
+# save the global map 
 ggsave(SAVE HERE)
 
 ```
 
-🟢 Using your ``sp_data_thin`` data frame, create another data frame called ``species_native``, where you filter the original so that it only keeps records where the longitude is greater than 60 degrees East. This object will contain all records from the psyllid's native range in Asia.
+🟢 Using your ``sp_data_thin`` data frame, create another data frame called ``species_native``, where you filter the original so that it only keeps records where the longitude is **greater than** 60 degrees East. This object will contain all records from the psyllid's native range in Asia. Do a quick check to see how many records there are in the native range data frame.
+
 
 ```{r eval=FALSE}
-
-# Filter GPS records from the native range only
 
 species_native = sp_data_thin %>%
   # FILTER LONGITUDE HERE
@@ -236,7 +237,7 @@ species_native = sp_data_thin %>%
 
 ```
 
-🟢 Now do the same for the invaded range, where you call the data frame ``species_invaded``. Filter the data so that you keep all records where longitude is less than 60 degrees East:
+🟢 Now do the same for the invaded range, where you call the data frame ``species_invaded``. Filter the data so that you keep all records where longitude is **less than** 60 degrees East. Check how many records there are in this invaded range data frame.
 
 ```{r eval=FALSE}
 
@@ -272,27 +273,21 @@ Here, we can have a look at how many GPS records fall within certain areas, if w
 
 ```{r eval=FALSE}
 
-#################################
 # How many points in the USA?
-#################################
 
 species_usa = sp_data_thin %>%
   dplyr::filter(lon > -127, lon< -65, lat > -5, lat < 50)
 
 print(paste("There are", nrow(species_usa), "GPS points in the USA.") )
 
-#################################
 # How many points in Brazil?
-#################################
 
 species_braz = sp_data_thin %>%
   dplyr::filter(lon > -73.99, lon < -34.80, lat > -33.75, lat < 5.27)
 
 print(paste("There are", nrow(species_braz), "GPS points in Brazil.") )
 
-#################################
 # How many points in Africa?
-#################################
 
 species_afr = sp_data_thin %>%
   dplyr::filter(lon > -26, lon < 55, lat > -48, lat < 40)
@@ -328,9 +323,19 @@ clim_sp_corr = clim_sp_corr[, gtools::mixedsort(names(clim_sp_corr))]
 # change the name of the elevation column to make it simpler
 clim_sp_corr = clim_sp_corr %>% rename(elevation = wc2.1_2.5m_elev)
 
-# run a Spearman correlation test on the variables
-cor_mat = cor(clim_sp_corr, method = "spearman")
+```
 
+🟢 Run a Spearman's correlation test on ``clim_sp_corr`` using the ``cor()`` function.
+
+```{r eval=FALSE}
+
+cor_mat = # RUN CORRELATION TEST HERE
+
+```
+
+Let's have a look at the results:
+
+```{r, eval=FALSE}
 # have a look at a correlation matrix plot
 cor_mat[cor_mat == 1 ] = 0
 corrplot::corrplot(cor_mat, type = "upper", order = "original",
@@ -480,7 +485,7 @@ saveRDS(object = presPoints, file = "data/presPoints.rds")
 
 ### Background Points (Pseudo-absences)
 
-We need to generate background GPS points where we are unlikely to record ACP. This is quite a debated topic in SDM work, as these pseudo-absence points are generated based on statistical approaches, rather than actual verified data. Nevertheless, a good approach is to select points from regions that are at least somewhat similar to presence areas in terms of climate type. Here, we'll use Köppen-Geiger climate data to select similar eco-regions to randomly sample points from.
+We need to generate background GPS points where we think we will be unlikely to record ACP. This is quite a debated topic in SDM work, as these pseudo-absence points are generated based on statistical approaches, rather than actual verified data. Nevertheless, a good approach is to select points from regions that are at least somewhat similar to presence areas in terms of climate type. Here, we'll use Köppen-Geiger climate data to select similar eco-regions to randomly sample points from.
 
 ```{r eval=FALSE}
 
@@ -515,7 +520,7 @@ terra::writeRaster(bg_area, "data/bg_area.tif")
 
 ```
 
-```{r eval=T}
+```{r eval=FALSE}
 
 presPoints = readRDS("data/presPoints.rds")
 bg_area = terra::rast("data/bg_area.tif")
@@ -545,7 +550,7 @@ dplyr::rename(lon = x, lat = y)
   
 head(bg_points)
 
-terra::plot(bg_area$wc2.1_2.5m_bio_1)
+terra::plot(kg_contain, col="khaki")
 points(bg_points$lon, 
        bg_points$lat, 
        pch = 21, 
@@ -615,6 +620,12 @@ saveRDS(object = backPoints, file = "data/backPoints.rds")
 As an aside, let's add some buffering around presence points, and remove any background points that fall within that buffer. Let's try a 300 km buffer zone around each presence point:
 
 ```{r eval=F}
+
+world_map = rnaturalearth::ne_countries(
+  scale = "medium", 
+  returnclass = "sf"
+) 
+
 # Convert data frames to sf objects
 pres_sf = sf::st_as_sf(sp_data_thin, coords = c("lon", "lat"), crs = 4326)
 bg_sf = sf::st_as_sf(bg_points, coords = c("lon", "lat"), crs = 4326)
@@ -625,7 +636,10 @@ bg_sf_proj   = sf::st_transform(bg_sf, crs = 3395)
 
 # Create buffer around presence points (in meters)
 # let's apply a 300 km buffer zone here. You can experiment with other values
-pres_buffer = st_buffer(pres_sf_proj, dist = 300000)
+pres_buffer = sf::st_buffer(pres_sf_proj, dist = 300000)
+
+# Transform buffers back to geographic coordinates for plotting
+pres_buffer_latlon = sf::st_transform(pres_buffer, crs = 4326)
 
 # Combine buffers into a single geometry
 pres_union = st_union(pres_buffer)
@@ -636,23 +650,35 @@ bg_filtered = bg_sf_proj[!st_intersects(bg_sf_proj, pres_union, sparse = FALSE),
 # Transform back to geographic coordinates
 bg_filtered_latlon = st_transform(bg_filtered, crs = 4326)
 
+########################
+# before buffering
+########################
+
+ggplot() +
+  geom_sf(data = pres_buffer_latlon, fill = "royalblue", alpha = 0.3, color = NA) +  # translucent buffer
+  geom_sf(data = world_map, alpha=0.5) +
+  geom_sf(data = pres_sf, color = "black", size = 2) +  # presence points
+  geom_sf(data = bg_sf, color = "darkred", size = 0.5) +
+  labs(title = "Presence Points with 300 km Buffers")
+
+########################
+# after buffering
+########################
+
+buffer.map = ggplot() +
+  geom_sf(data = pres_buffer_latlon, fill = "royalblue", alpha = 0.3, color = NA) +  # translucent buffer
+  geom_sf(data = world_map, alpha=0.5) +
+  geom_sf(data = pres_sf, color = "black", size = 2) +  # presence points
+  geom_sf(data = bg_filtered_latlon, color = "darkred", size = 0.5) +
+  labs(title = "Presence Points with 300 km Buffers")
+
+saveRDS(buffer.map, "data/buffer.map.rds")
+
 # Convert back to data frame 
 backPoints.buffer = bg_filtered_latlon %>%
  dplyr::mutate(lon = st_coordinates(.)[,1],
          lat = st_coordinates(.)[,2]) %>%
   sf::st_drop_geometry()
-
-terra::plot(bg_area$wc2.1_2.5m_bio_1)
-points(backPoints.buffer$lon, 
-       backPoints.buffer$lat, 
-       pch = 21, 
-       bg = 'black', 
-       cex = 0.2)
-points(sp_data_thin$lon, 
-       sp_data_thin$lat, 
-       pch = 21, 
-       bg = 'red', 
-       cex = 1)
 
 # save to file
 saveRDS(object = backPoints.buffer, file = "data/backPoints.buffer.rds")
@@ -661,25 +687,10 @@ saveRDS(object = backPoints.buffer, file = "data/backPoints.buffer.rds")
 
 With the buffering, you should get a map like this:
 
-```{r eval=T}
+```{r eval=TRUE, echo=FALSE}
 
-presPoints = readRDS("data/presPoints.rds")
-backPoints = readRDS("data/backPoints.rds")
-backPoints.buffer = readRDS("data/backPoints.buffer.rds")
-
-bg_area = terra::rast("data/bg_area.tif")
-
-terra::plot(bg_area$wc2.1_2.5m_bio_1)
-points(backPoints.buffer$lon, 
-       backPoints.buffer$lat, 
-       pch = 21, 
-       bg = 'black', 
-       cex = 0.2)
-points(presPoints$decimalLongitude, 
-       presPoints$decimalLatitude, 
-       pch = 21, 
-       bg = 'red', 
-       cex = 1)
+buffer.map = readRDS("data/buffer.map.rds")
+buffer.map
 
 ```
 
@@ -796,7 +807,7 @@ write.csv(df_long, file = "tuning/model_tuning_enmeval.csv",
 
 ``` 
 
-```{r eval=T}
+```{r eval=TRUE}
 
 # I have already run this tuning analysis, and so we can read the results in to proceed
 
@@ -870,7 +881,7 @@ There are auc.train, auc.diff.avg, auc.diff.sd, auc.val.avg, and auc.val.sd valu
 
 Let's have a look at the contribution of each variable to the model.
 
-```{r eval=T}
+```{r eval=FALSE}
 
 presPoints = readRDS("data/presPoints.rds")
 climate.df = dplyr::select(presPoints, !c(species, decimalLatitude, decimalLongitude))
@@ -883,10 +894,16 @@ new_names = c(paste0("bio_", c("1", "2", "5", "9", "12", "15", "19")), "elev")
 colnames(climate.df) = new_names
 head(climate.df)
 
-# create a PCA
-pca_res = prcomp(climate.df, scale. = TRUE)
+```
+
+🟢 Run a PCA on the ``climate.df`` data frame using the ``prcomp()`` function, and then access the loadings using the ``rotation`` attribute of ``pca_res`` (hint: use the dollar sign to access attributes -> ``$``).
+
+```{r eval = FALSE}
+
+pca_res = # RUN PCA HERE
 summary(pca_res)
-loadings = pca_res$rotation
+
+loadings = # ACCESS LOADINGS
 loadings
 
 PCA = factoextra::fviz_pca_var(pca_res,
@@ -905,9 +922,9 @@ pca_contribs = gridExtra::grid.arrange(a, b, ncol=2, top='Contribution of the va
 
 ```
 
-Let's plot the PCA again, but now let's have a look at whether there is any difference between the climate in the native versus the invaded range.
+Let's plot the PCA again, but now let's have a look at whether there is any difference between the climate in the native versus the invaded range. First, we'll create a new data frame from our presence points, and add a grouping column called ``range``. We can use an ``ifelse`` statement here to assign the word "native" or "nonnative" to each GPS record depending on its longitude:
 
-```{r eval=T}
+```{r eval=FALSE}
 
 presPoints.new = presPoints %>%
 dplyr::mutate(range = dplyr::if_else(decimalLongitude > 60, "native", "nonnative"))
@@ -916,11 +933,13 @@ head(presPoints.new)
 
 head(climate.df)
 
+# extract all PC1 and PC2 values
 pca_res_df = pca_res$x %>%
   as.data.frame() %>%
   # keep only PC1 and PC2
   dplyr::select(c(PC1, PC2))
 
+# add the range grouping column
 pca_res_df$range = presPoints.new$range
 
 pca_plot = pca_res_df %>%
@@ -962,7 +981,7 @@ hist(pca_res_df$PC2)
 
 Run a Schoener's D test to check niche overlap:
 
-```{r eval=T}
+```{r eval=FALSE}
 pca_native = pca_res_df %>%
   dplyr::filter(range == "native") %>%
   dplyr::select(PC1, PC2)
@@ -994,7 +1013,7 @@ ecospat::ecospat.plot.niche.dyn(grid_native, grid_nonnative, quant = 0.1, intere
 
 Let's make some box-plots, showing each bioclimate variable (and elevation) across the native vs non-native range:
 
-```{r eval=T}
+```{r eval=FALSE}
 
 presPoints_long = presPoints.new %>%
   tidyr::pivot_longer(cols = starts_with("wc2.1_2.5m_bio") | "wc2.1_2.5m_elev",  # Include elevation
@@ -1030,7 +1049,7 @@ Our best model was H3, and so we will set ``'betamultiplier=3.0'`` and ``'hinge=
 
 ### Fit the MaxEnt model
 
-```{r eval=T}
+```{r eval=FALSE}
 
 presPoints = readRDS("data/presPoints.rds")
 backPoints = readRDS("data/backPoints.rds")
@@ -1155,7 +1174,7 @@ terra::writeRaster(africa_env_layers, "africa_env_layers/africa_env_layers.tif",
 
 ```
 
-```{r eval=T}
+```{r eval=FALSE}
 
 terra::rast("africa_env_layers/africa_env_layers.tif") %>% plot()
 
@@ -1272,7 +1291,7 @@ saveRDS(africa, "figures/africa_map.rds")
 
 ```
 
-Save in a format that can be opened in Google Earth as a KML layer:
+Save in a format that can be opened in Google Earth as a KML layer. Open this file in Google Earth to have a look at your prediction layer! 
 
 ```{r eval=FALSE}
 
@@ -1284,7 +1303,7 @@ raster::KML(africa_kml, "figures/africa", maxpixels=5000000, overwrite = TRUE)
 
 Let's write a quick function to plot maps. This saves us the trouble of re-using the same ggplot code over and over again; making the coding process more efficient. Every time we want to plot a raster prediction layer, we can just call this function. Let's call it ``plot.predmap``:
 
-```{r, eval=T}
+```{r, eval=FALSE}
 
 plot.predmap = function(raster, EXT, title = "", arrow.pos = "bl", scale.pos = "bl"){
   
@@ -1363,9 +1382,9 @@ africa
 
 ### Some quick stats: how well did the model perform?
 
-## How well did the model perform for the African continent?
+#### How well did the model perform for the African continent?
 
-```{r eval=T}
+```{r eval=FALSE}
 
 predict_maxent_africa = terra::rast("raster_projections/maxent_projection_africa.tif")
 
@@ -1502,7 +1521,7 @@ prob_curve.africa = preds.africa %>%
 
 ### How well did the model perform in the native range?
 
-```{r eval=T}
+```{r eval=FALSE}
 
 reduced_preds = terra::rast("data/reduced_preds.tif")
 presPoints = readRDS("data/presPoints.rds")
@@ -1669,7 +1688,7 @@ Let's plot prediction maps for Tanzania and South Africa specifically, as there 
 
 Tanzania:
 
-```{r eval=T}
+```{r eval=FALSE}
 
 # read in our predictors again
 reduced_preds = terra::rast("data/reduced_preds.tif")
@@ -1699,7 +1718,7 @@ tanzania = plot.predmap(raster = predict_maxent_tanz, EXT = tanzania_ext, title 
 
 South Africa:
 
-```{r eval=T}
+```{r eval=FALSE}
 
 southafrica_ext = rnaturalearth::ne_countries(scale = "medium",
                                            returnclass = "sf") %>%
@@ -1739,7 +1758,7 @@ southAfrica
 
 We can even have a look at Reunion Island, where ACP has been reported recently.
 
-```{r eval=T}
+```{r eval=FALSE}
 # potentially run this if the function can't find Réunion because of the é
 # Sys.setlocale("LC_ALL", "en_US.UTF-8")
 
@@ -1769,9 +1788,9 @@ reunion
 
 Something interesting to explore is manually excluding occurrence points from a desired area, creating a MaxEnt model without them, and then having a look at how accurate the model is in predicting those areas as being suitable. This approach offers a form of independent validation, which one doesn't often see in the literature.
 
-As an exploratory exercise, let's exclude all the GPS points from South America, and re-run the model. We'll then validate the model using these independent points.
+As an exploratory exercise, let's exclude all the GPS points from South America, and re-run the MaxEnt model. We'll then validate the model using these independent points.
 
-```{r eval=T}
+```{r eval=FALSE}
 
 # these were our original presence and background points
 presPoints = readRDS("data/presPoints.rds")
@@ -1880,8 +1899,7 @@ dismo::response(maxentModel1, expand = TRUE)
 
 Now let's project this new model onto Africa, and compare it to the model where we included South American points.
 
-
-```{r eval=T}
+```{r eval=FALSE}
 
 africa_ext = rnaturalearth::ne_countries(scale = "medium", returnclass = "sf") %>%
   dplyr::filter(continent == "Africa")
@@ -1903,26 +1921,17 @@ terra::plot(predict_maxent_africa.woSA)
 terra::writeRaster(predict_maxent_africa.woSA, "raster_projections/maxent_projection_africa.woSA.tif",
                    overwrite = TRUE)
 
-africa.woSA = ggplot() +
-  # Plot MaxEnt prediction raster
-  tidyterra::geom_spatraster(
-    data = predict_maxent_africa.woSA,
-    maxcell = 5e+7         # maxcell = Inf
-  ) +
-  # Control raster colour and legend
- tidyterra::scale_fill_whitebox_c(
-    palette = "muted",
-    breaks = seq(0, 1, 0.2),
-    limits = c(0, 1)
-  ) +
-  # Plot Africa boundary
-  geom_sf(data = africa_ext, fill = NA, color = "black", size = 0.1) +
-  # Control axis and legend labels 
-  labs(
-    x = "Longitude",
-    y = "Latitude",
-    fill = "P(suitability)"
-  ) +
+# in case you need to read this back into memory
+predict_maxent_africa.woSA = terra::rast("raster_projections/maxent_projection_africa.woSA.tif")
+
+# Plot the map
+
+# remember the function your created earlier? You can use it again here:
+
+africa.woSA = plot.predmap(raster = predict_maxent_africa.woSA, EXT = africa_ext)
+
+# let's add our GPS points to it, and crop it slightly
+africa.woSA = africa.woSA +
   geom_point(
     data = species_afr,
     size = 1,
@@ -1934,27 +1943,7 @@ africa.woSA = ggplot() +
     ylim = c(-35, 38),
     crs = 4326,
     expand = FALSE
-  ) +
-  # Create title for the legend
-  theme(legend.position = "right") +
-  # Add scale bar to bottom-right of map
- ggspatial::annotation_scale(
-    location = "bl",          # 'bl' = bottom left
-    style = "ticks",
-    width_hint = 0.2
-  ) +
-  # Add north arrow
-  ggspatial::annotation_north_arrow(
-    location = "bl",
-    which_north = "true",
-    pad_x = unit(0.175, "in"),
-    pad_y = unit(0.3, "in"),
-    style = ggspatial::north_arrow_fancy_orienteering
-  ) +
-  # Change appearance of the legend
-  guides(
-    fill = guide_colorbar(ticks = FALSE)
-  ) ;africa.woSA
+  )
 
 # save the figure
 # ggsave("figs/africa_map.woSA.png", plot = africa.woSA, width = 6, height = 6, dpi = 350)
@@ -2047,7 +2036,7 @@ In the above plot, the green areas show where the full model (including South Am
 
 Let's use the South American points now to validate our latest MaxEnt model. First, we need to create objects that contain presence and background points for South America, and a raster layer with our predictor variables for the continent.
 
-```{r eval=T}
+```{r eval=FALSE}
 
 # Since we already had these presence and background points in our original datasets, let's create subsets that contain just those South American points
 
@@ -2112,7 +2101,7 @@ terra::plot(predict_maxent_SAm)
 
 Now we need to extract the MaxEnt suitability score at each presence and background point in South America
 
-```{r eval=T}
+```{r eval=FALSE}
 
 prespoints.vect = terra::vect(
   presPoints.SAm,
@@ -2171,7 +2160,7 @@ clim_data.SAm = dplyr::bind_rows(maxent_pres_scores, maxent_background_scores)
 
 Now that we have predicted MaxEnt scores for each presence and background point in South America, we can run a GLM to see whether the presence of ACP can be reliably predicted given a suitability score generated by the model we built (which excluded South American points). In other words, can the model we created distinguish between presence and background points for ACP?
 
-```{r eval=T}
+```{r eval=FALSE}
 
 #############################################################
 # Fit statistical model  
@@ -2250,7 +2239,7 @@ prob_curve_SAm = preds %>%
 
 ```
 
-```{r, eval=T}
+```{r, eval=FALSE}
 
 gridExtra::grid.arrange(prob_curve.africa, prob_curve_SAm, prob_curve.NR, nrow = 1)
 
