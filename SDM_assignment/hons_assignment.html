@@ -1668,12 +1668,14 @@ raster difference between the native and full-range trained models)
 <p><strong>[40 marks]</strong></p>
 <hr />
 </div>
-<div id="bonus-task-10-marks" class="section level3">
-<h3>🏆 Bonus Task (10 marks)</h3>
-<ul>
-<li>Create a function that takes in two raster layers
+<div id="bonus-tasks-10-marks-each" class="section level3">
+<h3>🏆 Bonus Tasks (10 marks each)</h3>
+<div id="task-1" class="section level4">
+<h4>🐜 Task 1</h4>
+<p>Create a function that takes in two raster layers
 (<code>raster.layer1</code>, <code>raster.layer2</code>) and a threshold
-value (<code>thresh</code>) as parameters. This function should then:
+value (<code>thresh</code>) as parameters. This function should
+then:</p>
 <ul>
 <li>Threshold each raster layer so that values above that threshold are
 retained (<code>raster.layer &gt; thresh</code>)</li>
@@ -1682,7 +1684,6 @@ retained (<code>raster.layer &gt; thresh</code>)</li>
 <li>Convert the result into a data frame</li>
 <li>Create a ggplot with the data frame</li>
 <li>Return the ggplot</li>
-</ul></li>
 </ul>
 <p>This is a reminder of how you can plot a data frame that was
 extracted from a raster:</p>
@@ -1691,8 +1692,17 @@ extracted from a raster:</p>
      scale_fill_gradientn(colors = c(&quot;darkred&quot;, &quot;grey85&quot;, &quot;darkgreen&quot;), na.value = &quot;transparent&quot;) +
      theme_minimal()</code></pre>
 <p>Use the rasters from Question 5 to test the function.</p>
+</div>
+<div id="task-2" class="section level4">
+<h4>🐜 Task 2</h4>
+<p>Train another MaxEnt model for the Argentine ant, but this time,
+create the model using only the <strong>invaded range</strong> data.
+Project this model back onto the native range (South America), and
+overlay the presence points onto the map. Comment on how well the model
+predicted the true native range occurrences.</p>
 <hr />
-<p><strong>Total: 100 marks (+10 bonus)</strong></p>
+<p><strong>Total: 100 marks (+20 bonus)</strong></p>
+</div>
 </div>
 </div>
 
